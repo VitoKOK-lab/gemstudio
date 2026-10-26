@@ -2889,7 +2889,7 @@ function jewelViewer(
     : new THREE.MeshStandardMaterial({ color: material().color, roughness: 0.4, flatShading: true });
   const obj = new THREE.Mesh(geometryFromFaces(faces), mat);
   sc.add(obj);
-  const disposeChips = chipFaces?.length ? addChipScars(sc, chipFaces) : null;
+  const disposeChips = chipFaces?.length ? addChipScars(sc, chipFaces, faces, state.log?.length || 11) : null;
   if (disposeChips) container.dataset.chips = chipFaces.length;
   bindOptics(obj);
   sc.add(new THREE.HemisphereLight(0xffffff, 0x6b4865, 3));
@@ -4011,7 +4011,7 @@ function practiceResultCard(ev, course) {
   );
   jewelViewer($("#resultViewer"), state.faces, {
     polished: damaged || (compactCourse() ? facetReady() : ev.polish >= 0.7),
-    fracture: damaged ? Math.max(3, state.damageCount + 2) : 0,
+    fracture: damaged ? Math.max(4, state.damageCount * 2 + 3) : 0,
   });
   $("#practiceContinue").onclick = () => {
     if (damaged) startCourse(i);
