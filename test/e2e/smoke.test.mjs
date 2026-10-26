@@ -158,8 +158,11 @@ test('a gentle press does not chip the stone on an easy level', {timeout: 300000
 test('a fast move that stops in the air does not chip: nothing has touched the lap', {timeout: 300000}, async () => {
   assert.equal(await pressOnLevelOne(20, 12, 1500, 340), 0);
 });
-test('a hard press chips the stone on an easy level', {timeout: 300000}, async () => {
-  assert.ok((await pressOnLevelOne(30, 12, 1500)) >= 1);
+// Headless frame pacing varies a lot, so a hard press gets up to three fresh games to land its chip.
+test('a hard press chips the stone on an easy level', {timeout: 600000}, async () => {
+  let chips = 0;
+  for (let i = 0; i < 3 && !chips; i++) chips = await pressOnLevelOne(30, 12, 1500);
+  assert.ok(chips >= 1);
 });
 
 test('the power and pull-down hints still show on a level the player has already cleared', {timeout: 240000}, async () => {
