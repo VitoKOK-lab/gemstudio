@@ -31,6 +31,7 @@ test('each royal blueprint draws the real plan: facet count, every tier angle, n
     const svg = blueprintSVG({plan, level, name: plans[c.design].family, materialName: m.name, ior: m.ior, seed: level});
     assert.ok(svg.startsWith('<svg') && svg.trim().endsWith('</svg>'), `level ${level}`);
     assert.ok(!/NaN|undefined|Infinity/.test(svg), `level ${level} has a broken number`);
+    assert.ok(svg.includes('Tahir Han'), `level ${level} signature`);
     assert.ok(svg.includes(`<tspan class="bp-num">${plan.facets}</tspan>`), `level ${level} facet total`);
     for (const a of new Set(plan.sequence.filter(s => s.lap === 'cut').map(s => s.angle.toFixed(1))))
       assert.ok(svg.includes(a), `level ${level} missing angle ${a}°`);

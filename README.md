@@ -13,6 +13,7 @@ Three.js gem-faceting game. Every push to `main` is tested, built and deployed t
 - `src/app.js`: the bench, camera, lever, guide and level flow. `animate()` is the only game loop; watchers register with `everyFrame(fn, ms)`.
 - `src/game.js`, `plans.js`, `geometry.js`, `contact.js`, `lever.js`, `learning.js`: pure game rules and geometry (unit-tested).
 - `src/rewards.js` + `blueprint-ui.js` + `blueprints.js`: royal blueprint rules, screens and the kraft-paper drawing.
-- `src/chip-card.js`, `impact-fx.js`, `royal-machine.js`, `apprentice.js`, `workshop.js`, `wall-cd.js`, `operator.js`: self-contained scene and feedback pieces.
+- `src/apprentice.js` (two of them: dial hand and pusher), `walkgrid.js` + `bench-scan.js` (floor plan and A* routes so they never walk through the machine), `confetti.js`: the helpers, their routes and the clear-level celebration.
+- `src/chip-card.js`, `impact-fx.js`, `royal-machine.js`, `workshop.js`, `wall-cd.js`, `operator.js`: self-contained scene and feedback pieces.
 - `blender/`: scripts that build the workshop models, studio HDRI and level thumbnails.
 - Music credits: `src/music/CREDITS.txt`. Kenney models (CC0): `src/models/kenney/`.

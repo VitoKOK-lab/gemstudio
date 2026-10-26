@@ -112,7 +112,7 @@ export function blueprintSVG({plan,level,name,materialName,ior,seed=1}){
   <path d="M60 ${tableH}H${W-60}" stroke="${INK}" stroke-width="1"/>
   <g transform="translate(70 ${tableH+36})" class="bp-cell"><text x="0" y="0">總面數 <tspan class="bp-num">${plan.facets}</tspan></text><text x="170" y="0">長寬比 <tspan class="bp-num">${ratio}</tspan></text><text x="340" y="0">桌面 <tspan class="bp-num">${tableW?(tableW/Wd*100).toFixed(0)+'%':'—'}</tspan></text><text x="0" y="28">材料 ${materialName} · 折射率 <tspan class="bp-num">${ior}</tspan></text></g>
   <text x="130" y="${tableH+92}" class="bp-small">腰圍定外形 → 亭部主面再輔面 → 翻面磨冠部；每層角度只調一次</text>
-  <text x="${W-330}" y="${H-122}" class="bp-small">首席切磨師</text><text x="${W-330}" y="${H-80}" class="bp-hand">Taichel Zana</text><path d="M${W-335} ${H-70}q60 10 120-4t110 4" stroke="#1f2f55" stroke-width="1.4" fill="none" opacity=".7"/>
+  <text x="${W-330}" y="${H-122}" class="bp-small">首席切磨師</text><text x="${W-330}" y="${H-80}" class="bp-hand">Tahir Han</text><path d="M${W-335} ${H-70}q60 10 120-4t110 4" stroke="#1f2f55" stroke-width="1.4" fill="none" opacity=".7"/>
  </g>
  <g transform="rotate(-11 800 1180)" opacity=".78"><rect x="700" y="1140" width="200" height="72" rx="6" fill="none" stroke="${RED}" stroke-width="3"/><rect x="707" y="1147" width="186" height="58" rx="4" fill="none" stroke="${RED}" stroke-width="1"/><text x="800" y="1182" class="bp-stamp" text-anchor="middle">皇室核准</text><text x="800" y="1200" text-anchor="middle" style="font:600 10px Georgia,serif;fill:${RED};letter-spacing:4px">APPROVED · ROYAL</text></g>
  ${waxSeal(W-120,150,46,rand)}

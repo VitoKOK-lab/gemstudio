@@ -1,152 +1,172 @@
-// The workshop apprentice (Kenney Mini Characters, CC0) does the bench's hand work:
-// - turns the angle / index / height handwheel whenever a setting changes (also during auto mode),
-// - fetches the step ladder, climbs it and lifts the stone off the dop to flip it,
-// - carries the laps between the machine and the rack,
-// - nods at each finished facet and winces at an impact.
-// Jobs from the operator wait until she is in place (`request(kind, ready)`); settings are just watched.
-const BASE = 'models/kenney/';
-const WALK_SPEED = 1.9, CLIMB_TIME = 1.1, TURN_RATE = 9;
+// A workshop apprentice (Kenney Mini Characters, CC0). Two of them work the bench:
+// - the dial hand turns the angle / index / height handwheels (by hand or by auto mode),
+// - the pusher handles the dop stick and the laps: the stick swings down to her, she swaps the stone or the disc.
+// Both stand on free floor (see walkgrid.js / bench-scan.js), never walk through anything, and "throw" a spark at the
+// part instead of touching it. When a level is cleared they dance and throw confetti.
+import { findPath, nearestFree, blockDisc, isFree, cellCenter, reachable } from './walkgrid.js';
+import { scanBench } from './bench-scan.js';
 
-// `keepOut` circles ([x, z, radius]) are the machine parts she walks around: the lap and splash pan, and the mast.
-export function createApprentice({THREE, GLTFLoader, scene, home = [3.45, 0, 1.05], ladderPark = [3.6, 0, -1.6], scale = 1.6, keepOut = [[-0.65, 0, 1.72], [2.25, 0.1, 0.55]]}) {
+const BASE = 'models/kenney/';
+const WALK_SPEED = 1.9, TURN_RATE = 9, THROW_RELEASE = 0.38, FLIGHT = 0.6;
+const CONFETTI = ['#ff5d8f', '#ffd447', '#4ad6c3', '#7a6bff', '#ff9a3c', '#8be15f'];
+
+export function createApprentice({
+  THREE, GLTFLoader, scene, name = 'apprentice', model = 'character-female-a.glb', home = [3.45, 1.05], scale = 1.6, stool = false, others = () => [],
+}) {
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   const root = new THREE.Group();
-  root.name = 'apprentice';
-  root.position.set(...home);
+  root.name = name;
+  root.userData.noCollide = true;
+  root.position.set(home[0], 0, home[1]);
   scene.add(root);
-  const homeSpot = V(...home), parkSpot = V(...ladderPark);
   const loader = new GLTFLoader();
-  let mixer = null, actions = {}, current = null, oneShotUntil = 0, body = null;
-  let handHeight = 1, reach = 0.35; // measured from the model once it loads
+  let mixer = null, body = null, current = null, oneShotUntil = 0, yaw = 0, yawGoal = 0, handY = 0.55;
+  const actions = {};
 
-  // Stool she waits beside.
-  loader.load(BASE + 'stoolBar.glb', g => {
-    const s = g.scene;
-    s.scale.setScalar(1.2);
-    s.position.set(home[0] + 0.45, 0, home[2] + 0.2);
-    s.traverse(o => {
-      if (!o.isMesh) return;
-      o.castShadow = o.receiveShadow = true;
-      if (o.material?.name === 'carpet') o.material.color.set('#6b2d4a');
-      if (o.material?.name === 'wood') o.material.color.set('#7a5230');
-    });
-    scene.add(s);
-  }, undefined, () => {});
+  if (stool)
+    loader.load(BASE + 'stoolBar.glb', (g) => {
+      const s = g.scene;
+      s.scale.setScalar(1.2);
+      s.position.set(home[0] + 0.45, 0, home[1] + 0.2);
+      s.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = o.receiveShadow = true;
+        if (o.material?.name === 'carpet') o.material.color.set('#6b2d4a');
+        if (o.material?.name === 'wood') o.material.color.set('#7a5230');
+      });
+      scene.add(s);
+    }, undefined, () => {});
 
-  // A wooden step ladder: two rails, rungs and a top platform she stands on.
-  const ladder = new THREE.Group();
-  ladder.name = 'apprentice-ladder';
-  const wood = new THREE.MeshStandardMaterial({color: '#9a6b3c', roughness: 0.7});
-  let ladderTop = 1.2;
-  function buildLadder(height) {
-    ladder.clear();
-    ladderTop = height;
-    const rail = (x, z, lean) => {
-      const len = height / Math.cos(lean), m = new THREE.Mesh(new THREE.BoxGeometry(0.07, len, 0.07), wood);
-      m.position.set(x, height / 2, z);
-      m.rotation.x = lean;
-      ladder.add(m);
-    };
-    const spread = 0.32;
-    for (const x of [-0.28, 0.28]) {
-      rail(x, spread / 2, -Math.atan2(spread / 2, height));
-      rail(x, -spread / 2, Math.atan2(spread / 2, height));
-    }
-    const rungs = Math.max(2, Math.round(height / 0.32));
-    for (let i = 1; i < rungs; i++) {
-      const y = (height * i) / rungs, r = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.05, 0.12), wood);
-      r.position.set(0, y, spread / 2 * (1 - y / height) + 0.02);
-      ladder.add(r);
-    }
-    const top = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.06, 0.46), wood);
-    top.position.y = height;
-    ladder.add(top);
-    ladder.traverse(o => o.isMesh && (o.castShadow = o.receiveShadow = true));
-  }
-  buildLadder(ladderTop);
-  ladder.position.copy(parkSpot);
-  scene.add(ladder);
-  let ladderHeld = false;
-
-  loader.load(BASE + 'character-female-a.glb', g => {
+  loader.load(BASE + model, (g) => {
     body = g.scene;
     body.scale.setScalar(scale);
-    body.traverse(o => o.isMesh && (o.castShadow = o.receiveShadow = true));
+    body.traverse((o) => o.isMesh && (o.castShadow = o.receiveShadow = true));
     root.add(body);
     mixer = new THREE.AnimationMixer(body);
     for (const clip of g.animations) actions[clip.name] = mixer.clipAction(clip);
-    for (const n of ['interact-right', 'emote-yes', 'emote-no', 'pick-up']) {
+    for (const n of ['interact-right', 'emote-yes', 'emote-no', 'pick-up', 'attack-melee-right']) {
       const a = actions[n];
-      if (a) {
-        a.setLoop(THREE.LoopOnce, 1);
-        a.clampWhenFinished = true;
-      }
+      if (a) (a.setLoop(THREE.LoopOnce, 1), (a.clampWhenFinished = true));
     }
     play('idle');
     root.updateMatrixWorld(true);
-    const hand = body.getObjectByName('arm-right'), size = new THREE.Box3().setFromObject(body).getSize(V());
-    handHeight = hand ? hand.getWorldPosition(V()).y - root.position.y : size.y * 0.5;
-    reach = Math.max(0.25, size.z * 0.6);
-    face(V(0.3, 0, 0.8));
+    const hand = body.getObjectByName('arm-right');
+    if (hand) handY = hand.getWorldPosition(V(0, 0, 0)).y;
+    face(0.3, 0.8);
   }, undefined, () => {});
 
-  function play(name, fade = 0.25) {
-    const next = actions[name];
+  function play(clip, fade = 0.25) {
+    const next = actions[clip];
     if (!next || (next === current && next.loop !== THREE.LoopOnce)) return;
     next.reset().setEffectiveWeight(1).fadeIn(fade).play();
     if (current && current !== next) current.fadeOut(fade);
     current = next;
     if (next.loop === THREE.LoopOnce) oneShotUntil = performance.now() + next.getClip().duration * 1000;
   }
-  let yaw = 0, yawGoal = 0, lean = 0;
-  function face(p) {
-    yawGoal = Math.atan2(p.x - root.position.x, p.z - root.position.z);
+  const face = (x, z) => (yawGoal = Math.atan2(x - root.position.x, z - root.position.z));
+
+  // ---- floor plan -------------------------------------------------------------------------------------
+  const plan = () => {
+    const { grid, raw } = scanBench(THREE, scene), g = { ...grid, blocked: grid.blocked.slice() };
+    for (const [x, z] of others()) blockDisc(g, x, z, 0.4);
+    return { g, raw };
+  };
+  const here = () => [root.position.x, root.position.z];
+  // Free spot near `target` (distance between min and max), the closest to where she is now.
+  function spotFor(target, min = 0.9, max = 2.2, retry = true) {
+    const { g } = plan(), [px, pz] = here(), ok = reachable(g, [px, pz]);
+    let best = null, bd = Infinity;
+    for (let j = 0; j < g.nz; j++)
+      for (let i = 0; i < g.nx; i++) {
+        if (g.blocked[j * g.nx + i] || !ok[j * g.nx + i]) continue;
+        const [x, z] = cellCenter(g, i, j), d = Math.hypot(x - target[0], z - target[1]);
+        if (d < min || d > max) continue;
+        const cost = Math.hypot(x - px, z - pz) + Math.abs(d - (min + max) / 2) * 0.6;
+        if (cost < bd) (bd = cost), (best = [x, z]);
+      }
+    // Nothing reachable in range: widen the range once, otherwise throw from where she stands.
+    return best || (retry ? spotFor(target, min, max + 1.6, false) : here());
   }
 
-  // ---- task runner: a queue of small steps, run one at a time -------------------------------------
-  let steps = [], job = null, idleAnim = 'idle';
-  const go = (to, anim = 'walk') => ({walk: to.clone().setY(0), anim});
-  const climb = up => ({climb: up, t: 0});
-  const doNow = fn => ({fn});
-  const work = (anim, until, point) => ({work: anim, until, point});
-  const circles = keepOut.map(([x, z, r]) => ({c: V(x, 0, z), r})), center = circles[0].c;
-  const blocked = (x, z, pad = 0) => circles.find(k => Math.hypot(x - k.c.x, z - k.c.z) < k.r + pad);
-  // Where to stand so the hands reach `p`: `reach` out from it, then pushed clear of the machine.
-  function standFor(p) {
-    const at = V(p.x, 0, p.z);
-    let side = at.clone().sub(center);
-    if (side.lengthSq() < 1e-4) side.set(0.3, 0, 1);
-    at.addScaledVector(side.normalize(), reach);
-    for (let i = 0; i < 4; i++) {
-      const k = blocked(at.x, at.z, 0.08);
-      if (!k) break;
-      const out = at.clone().sub(k.c).setY(0);
-      if (out.lengthSq() < 1e-4) out.set(0, 0, 1);
-      at.copy(k.c).addScaledVector(out.normalize(), k.r + 0.1);
+  // ---- effects: a thrown spark and confetti ------------------------------------------------------------
+  const MAX = 220, quads = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.06, 0.1), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }), MAX);
+  quads.count = 0;
+  quads.frustumCulled = false;
+  quads.userData.noCollide = true;
+  scene.add(quads);
+  const bits = [], dummy = new THREE.Object3D();
+  function burst(at, n, colors, speed, life, up = 1) {
+    for (let k = 0; k < n && bits.length < MAX; k++) {
+      const a = Math.random() * Math.PI * 2, s = speed * (0.4 + Math.random() * 0.8);
+      bits.push({
+        p: at.clone(), v: V(Math.cos(a) * s, (0.5 + Math.random()) * speed * up, Math.sin(a) * s), r: V(Math.random() * 6, Math.random() * 6, Math.random() * 6),
+        w: V(Math.random() * 9, Math.random() * 9, Math.random() * 9), t: 0, life: life * (0.7 + Math.random() * 0.6), c: new THREE.Color(colors[k % colors.length]),
+      });
     }
-    return at;
   }
-  // Straight line if it clears the machine, otherwise detour around the part in the way.
-  function route(from, to, depth = 0) {
-    for (let i = 1; i < 30; i++) {
-      const t = i / 30, x = from.x + (to.x - from.x) * t, z = from.z + (to.z - from.z) * t, k = blocked(x, z);
-      if (!k || depth > 3) continue;
-      const mid = V(x, 0, z), out = mid.clone().sub(k.c);
-      if (out.lengthSq() < 1e-4) out.set(-(to.z - from.z), 0, to.x - from.x);
-      const via = k.c.clone().addScaledVector(out.normalize(), k.r + 0.35);
-      return [...route(from, via, depth + 1), ...route(via, to, depth + 1)];
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), new THREE.MeshBasicMaterial({ color: '#ffd76a' }));
+  ball.visible = false;
+  ball.userData.noCollide = true;
+  scene.add(ball);
+  let flight = null;
+  function stepEffects(dt) {
+    if (flight) {
+      flight.t += dt / FLIGHT;
+      const u = Math.min(1, flight.t);
+      ball.visible = true;
+      ball.position.lerpVectors(flight.from, flight.to, u);
+      ball.position.y += Math.sin(u * Math.PI) * 0.7;
+      if (Math.random() < 0.8) burst(ball.position, 1, ['#ffd76a', '#fff3b0'], 0.25, 0.4, 0.3);
+      if (u >= 1) {
+        ball.visible = false;
+        burst(flight.to, 18, ['#ffd76a', '#fff3b0', '#ffffff'], 1.6, 0.7);
+        const done = flight.done;
+        flight = null;
+        done?.();
+      }
     }
-    return [to];
+    for (let k = bits.length - 1; k >= 0; k--) {
+      const b = bits[k];
+      b.t += dt;
+      b.v.y -= 4.5 * dt;
+      b.v.multiplyScalar(1 - 0.9 * dt);
+      b.p.addScaledVector(b.v, dt);
+      b.r.addScaledVector(b.w, dt);
+      if (b.t > b.life || b.p.y < 0.01) bits.splice(k, 1);
+    }
+    quads.count = bits.length;
+    bits.forEach((b, k) => {
+      dummy.position.copy(b.p);
+      dummy.rotation.set(b.r.x, b.r.y, b.r.z);
+      dummy.scale.setScalar(Math.max(0.05, 1 - Math.max(0, b.t / b.life - 0.7) * 3.3));
+      dummy.updateMatrix();
+      quads.setMatrixAt(k, dummy.matrix);
+      quads.setColorAt(k, b.c);
+    });
+    quads.instanceMatrix.needsUpdate = true;
+    if (quads.instanceColor) quads.instanceColor.needsUpdate = true;
   }
-  function step(dt) {
+
+  // ---- jobs: a queue of small steps, run one at a time -------------------------------------------------
+  let steps = [], job = null, thrown = 0, trespass = 0, dancing = null, lastTrespass = null;
+  const go = (x, z) => ({ walk: [x, z] });
+  const toss = (target, onLand, again) => ({ toss: target, onLand, again });
+  const wait = (until, point, cap = 20000) => ({ wait: until, point, cap });
+  const act = (fn) => ({ fn });
+  function start(kind, list) {
+    job = kind;
+    steps = list;
+  }
+  function stepOnce(dt) {
     const s = steps[0];
     if (!s) {
-      if (job) {
+      if (job && job !== 'dance') {
+        const [hx, hz] = nearestFree(plan().g, home[0], home[1]) || here();
         job = null;
-        steps = [go(homeSpot), doNow(() => face(V(0.3, 0, 0.8)))];
+        steps = [go(hx, hz), act(() => face(0.3, 0.8))];
         return;
       }
-      play(performance.now() < oneShotUntil ? current?.getClip().name : idleAnim);
+      if (!dancing && performance.now() > oneShotUntil) play('idle');
       return;
     }
     if (s.fn) {
@@ -154,170 +174,144 @@ export function createApprentice({THREE, GLTFLoader, scene, home = [3.45, 0, 1.0
       steps.shift();
       return;
     }
-    if (s.walk && !s.routed) {
-      s.routed = true;
-      const legs = route(V(root.position.x, 0, root.position.z), s.walk);
-      steps.splice(0, 1, ...legs.map(p => ({walk: p, anim: s.anim, routed: true})));
-      return;
-    }
     if (s.walk) {
-      const to = s.walk, here = root.position, flat = V(to.x - here.x, 0, to.z - here.z), dist = flat.length();
-      if (dist < 0.03) {
-        steps.shift();
+      if (!s.route) {
+        const { g } = plan(), path = findPath(g, here(), s.walk);
+        // No way through: stay where she is rather than cut across the machine.
+        steps.splice(0, 1, ...(path ? path.slice(1) : []).map(([x, z]) => ({ walk: [x, z], route: true })));
         return;
       }
-      face(to);
-      play(s.anim);
-      here.addScaledVector(flat.normalize(), Math.min(dist, WALK_SPEED * dt));
-      return;
-    }
-    if ('climb' in s) {
-      s.t = Math.min(1, s.t + dt / CLIMB_TIME);
+      const [tx, tz] = s.walk, dx = tx - root.position.x, dz = tz - root.position.z, dist = Math.hypot(dx, dz);
+      if (dist < 0.04) return void steps.shift();
+      face(tx, tz);
       play('walk');
-      root.position.y = (s.climb ? s.t : 1 - s.t) * ladderTop;
-      if (s.t >= 1) steps.shift();
+      const m = Math.min(dist, WALK_SPEED * dt);
+      root.position.x += (dx / dist) * m;
+      root.position.z += (dz / dist) * m;
       return;
     }
-    if (s.work) {
-      if (s.point) face(typeof s.point === 'function' ? s.point() : s.point);
-      if (s.work === 'interact-right') {
-        if (performance.now() > oneShotUntil - 120) play('interact-right', 0.12);
-      } else if (actions[s.work]?.loop !== THREE.LoopOnce) play(s.work);
-      if (s.until()) steps.shift();
+    if (s.toss) {
+      const target = typeof s.toss === 'function' ? s.toss() : s.toss;
+      if (!s.t0) {
+        s.t0 = performance.now();
+        oneShotUntil = 0;
+        play(actions['attack-melee-right'] ? 'attack-melee-right' : 'interact-right', 0.1);
+      }
+      face(target.x, target.z);
+      if (!s.sent && performance.now() - s.t0 > THROW_RELEASE * 1000) {
+        s.sent = true;
+        thrown++;
+        flight = { t: 0, from: V(root.position.x, handY, root.position.z), to: target.clone(), done: () => ((s.landed = true), s.onLand?.()) };
+      }
+      if (s.landed && performance.now() - s.t0 > 800) {
+        if (s.again?.()) (s.t0 = 0), (s.sent = false), (s.landed = false);
+        else steps.shift();
+      }
+      return;
+    }
+    if (s.wait) {
+      s.t0 ||= performance.now();
+      const p = s.point?.();
+      if (p) face(p.x, p.z);
+      if (performance.now() > oneShotUntil) play('idle');
+      if (s.wait() || performance.now() - s.t0 > s.cap) steps.shift();
     }
   }
-
-  // ---- jobs ---------------------------------------------------------------------------------------
-  // The ladder stays wherever it was last used; `ladderAt` is its floor spot.
-  let ladderAt = parkSpot.clone(), onLadder = false;
-  // Steps that bring the ladder under `spot` at the right height and put her on top of it.
-  function ladderUp(spot, height) {
-    const list = [];
-    if (onLadder) list.push(climb(false), doNow(() => (onLadder = false)));
-    const moved = ladderAt.distanceTo(spot) > 0.05 || Math.abs(ladderTop - height) > 0.05;
-    if (moved) {
-      const side = ladderAt.clone().sub(center).setY(0).setLength(0.45), aside = spot.clone().sub(center).setY(0).setLength(0.45);
-      list.push(
-        go(ladderAt.clone().add(side)),
-        doNow(() => (face(ladderAt), play('pick-up', 0.15))),
-        work('pick-up', () => performance.now() > oneShotUntil - 200, () => ladderAt),
-        doNow(() => (ladderHeld = true)),
-        go(spot.clone().add(aside)),
-        doNow(() => {
-          ladderHeld = false;
-          buildLadder(height);
-          ladderAt.copy(spot);
-          ladder.position.copy(spot);
-        }),
-      );
-    }
-    list.push(go(spot), climb(true), doNow(() => (onLadder = true)));
-    return list;
-  }
-  const down = () => [climb(false), doNow(() => (onLadder = false))];
-  const reachHeight = p => Math.max(0, p.y - handHeight);
-
-  let lastTurn = 0, turnPoint = null;
-  // A setting changed: take the ladder to that handwheel and keep turning while changes keep coming.
-  function turn(point) {
-    lastTurn = performance.now();
-    turnPoint = point;
-    if (job || !mixer) return;
-    const spot = standFor(point), h = reachHeight(point), idle = () => performance.now() - lastTurn > 2200;
-    start('turn', [
-      ...(h > 0.15 ? ladderUp(spot, h) : [go(spot)]),
-      doNow(() => face(turnPoint)),
-      work('interact-right', idle, () => turnPoint),
-      ...(h > 0.15 ? down() : []),
-    ]);
-  }
-  // Operator jobs: the stone flip (on the ladder) and the lap change (carried). `ready` starts the machine.
-  let operatorBusy = () => false, operatorPoint = () => null, stonePoint = null, lapPoint = null;
-  function request(kind, ready) {
-    if (!mixer) return ready();
-    if (ladderHeld) {
-      ladderHeld = false;
-      ladder.position.copy(ladderAt);
-    }
-    const p = (kind === 'stone' ? stonePoint : lapPoint)?.() || V(0, 1, 0);
-    if (kind === 'stone') {
-      const spot = standFor(p);
-      start('stone', [
-        ...ladderUp(spot, Math.max(0.3, reachHeight(p))),
-        doNow(() => (face(p), ready())),
-        work('holding-both', () => !operatorBusy(), () => operatorPoint() || p),
-        ...down(),
-      ]);
-    } else {
-      start('lap', [
-        ...(onLadder ? down() : []),
-        go(standFor(p)),
-        doNow(() => (face(p), ready())),
-        // Follow the wrench and the carried disc, hands out in front.
-        work('holding-both', () => {
-          const w = operatorPoint();
-          if (w) {
-            const to = standFor(w);
-            root.position.lerp(V(to.x, 0, to.z), 0.06);
-            face(w);
-          }
-          return !operatorBusy();
-        }),
-      ]);
-    }
-  }
-  // A job (re)starts from the ground unless she is already on the ladder.
-  function start(kind, list) {
-    job = kind;
-    if (!onLadder) root.position.y = 0;
-    steps = list;
-  }
-
+  let snapped = false;
   function update(dt) {
     if (!mixer) return;
+    if (!snapped && scanBench(THREE, scene).meshes > 200) {
+      snapped = true;
+      const f = nearestFree(plan().g, root.position.x, root.position.z);
+      if (f) root.position.set(f[0], 0, f[1]);
+    }
     mixer.update(dt);
-    step(dt);
+    if (dancing) dance(dt);
+    else stepOnce(dt);
+    stepEffects(dt);
     let d = yawGoal - yaw;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     yaw += d * Math.min(1, TURN_RATE * dt);
     root.rotation.y = yaw;
-    // Lean toward work that is beyond arm's length (up to ~30°).
-    const target = steps[0]?.work && steps[0].point ? (typeof steps[0].point === 'function' ? steps[0].point() : steps[0].point) : null;
-    let leanGoal = 0;
-    if (target) {
-      const gap = Math.hypot(target.x - root.position.x, target.z - root.position.z) - reach * 0.6;
-      leanGoal = Math.max(0, Math.min(0.55, gap * 0.6));
-    }
-    lean += (leanGoal - lean) * Math.min(1, 5 * dt);
-    if (body) body.rotation.x = lean;
-    if (ladderHeld) {
-      // Carried upright beside her.
-      ladder.position.set(root.position.x + Math.cos(yaw) * 0.35, 0.25, root.position.z - Math.sin(yaw) * 0.35);
-      ladder.rotation.y = yaw;
+    // For the tests: how often she stood on blocked floor (never, if the route works).
+    if (snapped && !dancing && !isFree(scanBench(THREE, scene).raw, root.position.x, root.position.z)) (trespass++, (lastTrespass = [root.position.x, root.position.z, job]));
+  }
+
+  // ---- what the bench asks of her ----------------------------------------------------------------------
+  let lastTurn = 0, turnAt = null;
+  // A setting changed: stand clear of the machine and throw a spark at that handwheel while changes keep coming.
+  function turn(point) {
+    lastTurn = performance.now();
+    turnAt = point.clone();
+    if (job || !mixer) return;
+    start('turn', [go(...spotFor([point.x, point.z], 1.0, 2.4)), toss(() => turnAt, null, () => performance.now() - lastTurn < 2200)]);
+  }
+  let operatorBusy = () => false, operatorPoint = () => null, stonePoint = null, lapPoint = null, stickLow = () => true;
+  // The operator's stone flip or lap change waits for `ready`: the spark has to land on the part first.
+  function request(kind, ready) {
+    if (!mixer) return ready();
+    const part = () => (kind === 'stone' ? stonePoint : lapPoint)?.() || V(0, 1, 0), at = part();
+    start(kind, [
+      go(...spotFor([at.x, at.z], 1.0, 2.4)),
+      toss(part, null),
+      // The stick swings down to her hands first (app.js lowers it while the stone job waits).
+      wait(() => kind !== 'stone' || stickLow(), part, 9000),
+      act(ready),
+      wait(() => !operatorBusy(), () => operatorPoint() || part()),
+    ]);
+  }
+
+  // ---- celebration -------------------------------------------------------------------------------------
+  function celebrate() {
+    if (!mixer) return;
+    steps = [];
+    job = 'dance';
+    dancing = { t: 0, spin: yaw };
+    if (actions.jump) (actions.jump.setLoop(THREE.LoopRepeat, Infinity), play('jump', 0.15));
+    const top = V(root.position.x, 1.3, root.position.z);
+    burst(top, 70, CONFETTI, 2.6, 3.2, 1.4);
+    setTimeout(() => burst(top, 50, CONFETTI, 2.2, 3, 1.3), 700);
+    setTimeout(() => burst(top, 50, CONFETTI, 2.4, 3, 1.3), 1500);
+  }
+  function dance(dt) {
+    dancing.t += dt;
+    yawGoal = yaw = dancing.spin + dancing.t * 7; // spin on the spot
+    if (body) body.rotation.z = Math.sin(dancing.t * 9) * 0.18; // sway
+    if (dancing.t > 3.2) {
+      dancing = null;
+      if (body) body.rotation.z = 0;
+      current?.fadeOut(0.2);
+      current = null;
+      play('emote-yes', 0.2);
+      job = null;
     }
   }
-  // Short reactions that never interrupt a job.
-  function gesture(name) {
-    if (job && job !== 'turn') return;
-    if (performance.now() < oneShotUntil - 150) return;
-    if (!job) play(name, 0.15);
+  function gesture(clip) {
+    if (job || performance.now() < oneShotUntil - 150) return;
+    play(clip, 0.15);
   }
   return {
     root,
-    ladder,
     update,
     gesture,
     turn,
     request,
+    celebrate,
     get job() {
       return job;
     },
-    // Tells her where the work is: the stone, the lap, the operator's live hand point and which side is "out".
-    attach({busy, point, stone, lap}) {
+    get ready() {
+      return Boolean(mixer);
+    },
+    get stats() {
+      return { thrown, trespass, lastTrespass, bits: bits.length };
+    },
+    attach({ busy, point, stone, lap, stickReady }) {
       operatorBusy = busy;
       operatorPoint = point;
       stonePoint = stone;
       lapPoint = lap;
+      if (stickReady) stickLow = stickReady;
     },
   };
 }

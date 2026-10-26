@@ -44,6 +44,7 @@ import { fractureFaces, addChipScars } from "./chip-card.js";
 import { impactSound, screenShake, armBounce, treasureChime } from "./impact-fx.js";
 import { buildRoyalMachine } from "./royal-machine.js";
 import { createApprentice } from "./apprentice.js";
+import { screenConfetti } from "./confetti.js";
 import { plans, buildPlan, planSVG, catalogPlanIds, specialistPlans } from "./plans.js";
 import {
   LAP_Y,
@@ -250,6 +251,7 @@ function onImpact() {
   if (!audioMuted && audioContext?.state === "running") impactSound(audioContext);
   screenShake();
   apprentice.gesture("emote-no");
+  pusher.gesture("emote-no");
 }
 let activeSetupField = null;
 let autoGuideKey = "",
@@ -671,6 +673,7 @@ for (let i = 0; i < 36; i++) {
 cube(0.14, 0.48, 0.14, mats.base, pivot, 0, 0.02, 0.28);
 cube(0.14, 0.48, 0.14, mats.base, pivot, 0, 0.02, -0.28);
 const arm = new THREE.Group();
+arm.userData.noCollide = true; // it swings across the bench; the apprentices' floor plan ignores it
 pivot.add(arm);
 cube(0.18, 0.48, 0.21, mats.dark, arm, 0, -0.18, 0);
 cyl(0.035, 0.3, mats.metal, arm, 0, -0.5, 0);
@@ -779,11 +782,15 @@ for (let i = 0; i < 5; i++)
       -0.25,
     ),
   );
-// The apprentice does the bench's hand work: operator jobs wait for her (see apprentice.js).
-const apprentice = createApprentice({ THREE, GLTFLoader, scene });
+// Two apprentices do the bench's hand work (see apprentice.js): one turns the dials, the other swaps stone and laps for the operator.
+const apprentice = createApprentice({ THREE, GLTFLoader, scene, name: "apprentice-dial", home: [2.9, 2.1], stool: true, others: () => [[pusher.root.position.x, pusher.root.position.z]] });
+const pusher = createApprentice({
+  THREE, GLTFLoader, scene, name: "apprentice-pusher", model: "character-male-c.glb", home: [-3.3, 2.1],
+  others: () => [[apprentice.root.position.x, apprentice.root.position.z]],
+});
 const operator = createOperator({
   scene,
-  helper: apprentice,
+  helper: pusher,
   arm,
   carriage,
   pivot,
@@ -1946,9 +1953,11 @@ function animate(now) {
     a + 0.55,
     supportedAngle(state.faces, a, carriage.position.y, state.index, state.flip) + 0.25,
   );
+  // A stone flip swings the dop stick down to where the apprentice can reach it; other jobs lift it out of the way.
+  const lowered = operator.kind === "transfer" ? (serviceAngle ??= stickServiceAngle()) : (serviceAngle = null);
   const requested =
     state.inspecting || operator.busy || (rigMotion.active && !hold)
-      ? Math.PI - 0.1
+      ? (lowered ?? Math.PI - 0.1)
       : hold && (rigMotion.active || (contactFelt && leverTravel >= 1))
         ? THREE.MathUtils.degToRad(rigMotion.value.angle)
         : THREE.MathUtils.lerp(restAngle, a, contact);
@@ -2197,6 +2206,21 @@ function animate(now) {
     persist();
     lastSave = now;
   }
+}
+let serviceAngle = null;
+// The arm angle that puts the stone at about hand height (0.95) for the apprentice.
+function stickServiceAngle() {
+  const saved = arm.rotation.z, at = new THREE.Vector3();
+  let best = Math.PI - 0.1, bestGap = Infinity;
+  for (let a = 0.3; a <= Math.PI - 0.1; a += 0.02) {
+    arm.rotation.z = -a;
+    scene.updateMatrixWorld(true);
+    const gap = Math.abs(gem.getWorldPosition(at).y - 0.95);
+    if (gap < bestGap) (bestGap = gap), (best = a);
+  }
+  arm.rotation.z = saved;
+  scene.updateMatrixWorld(true);
+  return best;
 }
 function updateWeight() {
   $("#currentWeight").textContent = ((rawWeight() * volume(state.faces)) / initialVolume).toFixed(2);
@@ -3938,14 +3962,16 @@ function cutterRank(ev) {
   const score = ev.quality * 0.72 + Math.min(1, ev.ratio / 0.28) * 28;
   return score >= 92 ? "GENIUS" : score >= 82 ? "MASTER" : score >= 68 ? "EXPERT" : "NOVICE";
 }
+function practiceCleared(ev, course) {
+  return (
+    !(state.damageCount || 0) &&
+    (compactCourse() ? state.step === sequence().length - 1 && facetReady() : passLesson(course, state, ev, state.inspectionCount > 0))
+  );
+}
 function practiceResultCard(ev, course) {
   const i = courses.findIndex((c) => c.id === course.id),
     damaged = (state.damageCount || 0) > 0,
-    passed =
-      !damaged &&
-      (compactCourse()
-        ? state.step === sequence().length - 1 && facetReady()
-        : passLesson(course, state, ev, state.inspectionCount > 0)),
+    passed = practiceCleared(ev, course),
     hasNext = i + 1 < courses.length,
     rank = course.advanced ? cutterRank(ev) : null;
   if (passed) rememberCard(course, i);
@@ -3998,8 +4024,15 @@ function showPracticeResult(ev, course) {
   const level = courses.findIndex((c) => c.id === course.id) + 1,
     passed = compactCourse() && !(state.damageCount || 0) && state.step === sequence().length - 1 && facetReady(),
     fresh = passed ? grantBlueprints(blueprintGrants(level, courses)) : [];
-  if (fresh.length) blueprintUI.reveal(fresh, () => practiceResultCard(ev, course));
-  else practiceResultCard(ev, course);
+  const show = () => (fresh.length ? blueprintUI.reveal(fresh, () => practiceResultCard(ev, course)) : practiceResultCard(ev, course));
+  // Cleared: both apprentices dance and confetti flies for a moment before the card opens.
+  if (practiceCleared(ev, course)) {
+    apprentice.celebrate();
+    pusher.celebrate();
+    screenConfetti();
+    if (!audioMuted && audioContext?.state === "running") treasureChime(audioContext);
+    setTimeout(show, 2800);
+  } else show();
 }
 
 let previewDrag = null,
@@ -5217,22 +5250,25 @@ if ($("#entryCards")) {
 // Workshop apprentice: walks to the handwheel for any setting change (the player's or auto mode's),
 // does the stone flips and lap changes for the operator, nods at each finished facet (impacts: onImpact).
 const worldPos = (o) => o.getWorldPosition(new THREE.Vector3());
-apprentice.attach({
+pusher.attach({
   busy: () => operator.busy,
   point: () => operator.workPoint,
   stone: () => worldPos(gem),
   lap: () => worldPos(lap),
+  stickReady: () => serviceAngle !== null && Math.abs(headAngle - serviceAngle) < 0.08,
 });
 const handwheels = { angle: dial, index: indexWheel, height: knob };
 let apprenticeSeen = { angle: state.angle, index: state.index, height: state.height, facet: state.batchFacet, step: state.step },
   apprenticeLast = performance.now();
 everyFrame((now) => {
-  apprentice.update(Math.min(1, (now - apprenticeLast) / 1000)); // her motion is time-based, so a slow frame never stalls the job
+  const dt = Math.min(1, (now - apprenticeLast) / 1000); // their motion is time-based, so a slow frame never stalls a job
+  apprentice.update(dt);
+  pusher.update(dt);
   apprenticeLast = now;
   const s = apprenticeSeen;
   const turned = Math.abs(state.angle - s.angle) > 0.01 ? "angle" : state.index !== s.index ? "index" : Math.abs(state.height - s.height) > 0.005 ? "height" : null;
   if (turned && openingDone && !entryAwaiting) apprentice.turn(worldPos(handwheels[turned]));
-  else if (state.step !== s.step || (state.batchFacet !== s.facet && state.batchFacet > 0)) apprentice.gesture("emote-yes");
+  else if (state.step !== s.step || (state.batchFacet !== s.facet && state.batchFacet > 0)) (apprentice.gesture("emote-yes"), pusher.gesture("emote-yes"));
   apprenticeSeen = { angle: state.angle, index: state.index, height: state.height, facet: state.batchFacet, step: state.step };
 });
 
@@ -5245,6 +5281,8 @@ if (location.hash === "#debug")
     THREE,
     gem,
     apprentice,
+    pusher,
+    celebrate: () => (apprentice.celebrate(), pusher.celebrate(), screenConfetti()),
     courses,
     startCourse,
     st: () => state,

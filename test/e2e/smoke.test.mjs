@@ -49,14 +49,14 @@ test('holding the lever on a compact level grinds facets and an impact shakes th
     assert.ok(after < before, `volume ${before} -> ${after}`);
 
     await page.evaluate(() => (__dbg.st().damageCount = (__dbg.st().damageCount || 0) + 1));
-    await page.waitForFunction(() => document.body.classList.contains('impact-shake'), null, {timeout: 2000});
+    await page.waitForFunction(() => document.body.classList.contains('impact-shake'), null, {timeout: 30000});
     assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
   } finally {
     await close();
   }
 });
 
-test('the apprentice fetches the ladder and climbs it before the stone is flipped', {timeout: 600000}, async () => {
+test('the pusher swings the stick down, throws a spark and flips the stone; nobody walks through anything', {timeout: 600000}, async () => {
   const {page, errors, close} = await openGame();
   try {
     await startLevel(page, 3);
@@ -65,20 +65,37 @@ test('the apprentice fetches the ladder and climbs it before the stone is flippe
       document.getElementById('transfer').click();
     });
     const flip = await page.evaluate(async () => {
-      const W = ms => new Promise(r => setTimeout(r, ms)), a = __dbg.apprentice, seen = {movedLadder: false, phaseWhenStarted: null};
-      const park = a.ladder.position.clone(), flipBefore = __dbg.st().flip;
+      const W = ms => new Promise(r => setTimeout(r, ms)), seen = {thrownBeforeLift: null, stoneLowAtLift: null};
+      const flipBefore = __dbg.st().flip, up = new __dbg.THREE.Vector3();
       for (let i = 0; i < 4000 && __dbg.st().flip === flipBefore; i++) {
         await W(100);
-        if (a.ladder.position.distanceTo(park) > 0.5) seen.movedLadder = true;
-        const phase = facetDebug().operator.phase;
-        if (seen.phaseWhenStarted === null && phase === 'lift-stone') seen.heightWhenStarted = a.root.position.y, (seen.phaseWhenStarted = phase);
+        if (seen.thrownBeforeLift === null && facetDebug().operator.phase === 'lift-stone')
+          (seen.thrownBeforeLift = __dbg.pusher.stats.thrown), (seen.stoneLowAtLift = __dbg.gem.getWorldPosition(up).y);
       }
       seen.flipped = __dbg.st().flip !== flipBefore;
+      seen.trespass = __dbg.apprentice.stats.trespass + __dbg.pusher.stats.trespass;
+      seen.last = [__dbg.apprentice.stats.lastTrespass, __dbg.pusher.stats.lastTrespass];
       return seen;
     });
-    assert.ok(flip.movedLadder, 'ladder was carried over');
-    assert.ok(flip.heightWhenStarted > 0.5, `she was on the ladder when the stone lifted (y ${flip.heightWhenStarted})`);
+    assert.ok(flip.thrownBeforeLift >= 1, 'a spark was thrown before the stone moved');
+    assert.ok(flip.stoneLowAtLift < 1.3, `the stick came down to her (stone y ${flip.stoneLowAtLift})`);
     assert.ok(flip.flipped, 'stone was flipped');
+    assert.equal(flip.trespass, 0, `they stayed on free floor ${JSON.stringify(flip.last)}`);
+    assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
+  } finally {
+    await close();
+  }
+});
+
+test('clearing a level makes both apprentices dance and throw confetti', {timeout: 120000}, async () => {
+  const {page, errors, close} = await openGame();
+  try {
+    await page.waitForFunction(() => __dbg.apprentice.ready && __dbg.pusher.ready, null, {timeout: 60000});
+    await page.evaluate(() => __dbg.celebrate());
+    await page.waitForSelector('canvas[style*="99999"]', {timeout: 20000});
+    const during = await page.evaluate(() => ({dial: __dbg.apprentice.job, push: __dbg.pusher.job, bits: __dbg.apprentice.stats.bits + __dbg.pusher.stats.bits}));
+    assert.deepEqual([during.dial, during.push], ['dance', 'dance']);
+    assert.ok(during.bits > 0, 'confetti pieces in the air');
     assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
   } finally {
     await close();

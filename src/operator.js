@@ -123,6 +123,8 @@ export function createOperator({ scene, arm, carriage, pivot, lap, nut, waterArm
   mover.visible = false;
   mover.castShadow = true;
   scene.add(mover);
+  // Hands, wrench and the carried disc move around the bench; the apprentices' floor plan ignores them.
+  for (const o of [grip, adjust, movingHand, wrench, mover]) o.userData.noCollide = true;
   let job = null,
     lastPhase = "idle";
   const home = new THREE.Vector3(-0.65, 0.82, 0),
@@ -333,6 +335,10 @@ export function createOperator({ scene, arm, carriage, pivot, lap, nut, waterArm
     turn(field) {
       turnField = field;
       turnUntil = performance.now() + 850;
+    },
+    // 'transfer' (stone flip) or 'lap' (disc change) while a job runs.
+    get kind() {
+      return job ? job.kind || 'lap' : null;
     },
     get busy() {
       return Boolean(job);
