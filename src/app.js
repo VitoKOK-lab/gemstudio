@@ -2935,7 +2935,7 @@ function jewelViewer(
     : new THREE.MeshStandardMaterial({ color: material().color, roughness: 0.4, flatShading: true });
   const obj = new THREE.Mesh(geometryFromFaces(faces), mat);
   sc.add(obj);
-  const disposeChips = chipFaces?.length ? addChipScars(sc, chipFaces, faces, state.log?.length || 11) : null;
+  const disposeChips = chipFaces?.length ? addChipScars(sc, chipFaces, faces, state.log?.length || 11, displayColor ?? (materialId === (state.materialId || "glass") ? gemstoneColor() : materials[materialId].color)) : null;
   if (disposeChips) container.dataset.chips = chipFaces.length;
   bindOptics(obj);
   sc.add(new THREE.HemisphereLight(0xffffff, 0x6b4865, 3));
@@ -3736,6 +3736,7 @@ function levelLocked(i) {
 }
 const lockedText = (i) => `第 ${i + 1} 關要先拿到圖紙：通過第 ${blueprintSource(i + 1)} 關就能獲得`;
 function startCourse(i) {
+  resultPending?.cancel();
   nextCourseCue.hidden = true;
   if (levelLocked(i)) {
     toast(lockedText(i));
@@ -4098,20 +4099,37 @@ function practiceResultCard(ev, course) {
   );
 }
 // A clean pass of a royal-blueprint level first opens the treasure reveal, then the result card.
+// The card is built from a snapshot taken at clear time, and a second press (power, finish) skips the
+// celebration wait instead of starting another one.
+let resultPending = null;
 function showPracticeResult(ev, course) {
-  const level = courses.findIndex((c) => c.id === course.id) + 1,
+  if (resultPending) {
+    resultPending.skip();
+    return;
+  }
+  const runId = state.runId,
+    level = courses.findIndex((c) => c.id === course.id) + 1,
+    cleared = practiceCleared(ev, course),
     passed = compactCourse() && !(state.damageCount || 0) && state.step === sequence().length - 1 && facetReady(),
     fresh = passed ? grantBlueprints(blueprintGrants(level, courses)) : [];
-  const show = () => (fresh.length ? blueprintUI.reveal(fresh, () => practiceResultCard(ev, course)) : practiceResultCard(ev, course));
+  const open = () => (fresh.length ? blueprintUI.reveal(fresh, () => practiceResultCard(ev, course)) : practiceResultCard(ev, course));
+  if (!cleared) return open();
   // Cleared: both apprentices dance and confetti flies for a moment before the card opens.
-  if (practiceCleared(ev, course)) {
-    apprentice.celebrate();
-    pusher.celebrate();
-    scenery.celebrate();
-    screenConfetti();
-    if (!audioMuted && audioContext?.state === "running") treasureChime(audioContext);
-    setTimeout(show, 2800);
-  } else show();
+  apprentice.celebrate();
+  pusher.celebrate();
+  scenery.celebrate();
+  screenConfetti();
+  if (!audioMuted && audioContext?.state === "running") treasureChime(audioContext);
+  let timer = 0;
+  const show = () => {
+    clearTimeout(timer);
+    if (resultPending !== job) return;
+    resultPending = null;
+    if (state.runId === runId) open();
+  };
+  const job = { skip: show, cancel: () => (clearTimeout(timer), (resultPending = null)) };
+  resultPending = job;
+  timer = setTimeout(show, 2800);
 }
 
 let previewDrag = null,

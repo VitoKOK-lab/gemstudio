@@ -7265,3 +7265,137 @@ body.royal-angle #nextCourseCue {
 .course-list button.locked em {
   color: #8a6a2a;
 }
+
+/* Target sheet: clean modern paper, gem at double size, nothing wider than the sheet. */
+#targetPreview .target-paper {
+  width: min(100%, 520px);
+  max-width: 520px;
+  max-height: calc(100dvh - 16px) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  padding: 16px 18px 14px !important;
+  color: #2f3a46;
+  border: 1px solid #cfd6de;
+  outline: 0;
+  border-radius: 14px;
+  background:
+    radial-gradient(ellipse at 50% 0%, #ffffff, transparent 70%),
+    linear-gradient(180deg, #fbfcfd, #eef2f6);
+  box-shadow:
+    0 24px 80px #0009,
+    inset 0 0 0 1px #ffffff;
+}
+#targetPreview .paper-docline {
+  gap: 8px;
+  min-width: 0;
+  white-space: normal !important;
+  font: 9px/1.3 ui-monospace, monospace !important;
+  letter-spacing: 0.04em;
+  color: #6b7886;
+  border-bottom: 1px solid #d5dbe2;
+}
+#targetPreview .paper-docline span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#targetPreview .paper-docline span:last-child {
+  flex: none;
+}
+#targetPreview .paper-head {
+  padding: 8px 0 !important;
+  border-bottom: 1px solid #d5dbe2;
+}
+#targetPreview .paper-head h2 {
+  font-size: 20px !important;
+  color: #26313c;
+}
+#targetPreview .paper-name {
+  font-size: 12px !important;
+  color: #66737f;
+}
+#targetPreview .paper-stamp {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-color: #7d8a97;
+  color: #3d4b59;
+  font-size: 16px;
+}
+#targetPreview .paper-stamp small {
+  font-size: 7px;
+}
+#targetPreview .paper-gem {
+  width: min(100%, 300px) !important;
+  margin: 4px auto 0 !important;
+  border-bottom: 0;
+}
+#targetPreview .gem-caption {
+  font: 9px ui-monospace, monospace !important;
+  margin-top: -6px !important;
+  color: #66737f;
+}
+#targetPreview .paper-drawings svg {
+  height: 84px !important;
+}
+#targetPreview .paper-specs div,
+#targetPreview .paper-specs b,
+#targetPreview .paper-specs span {
+  font-size: 10px !important;
+  color: #3a4756;
+}
+#targetPreview .paper-specs div {
+  border-color: #d5dbe2;
+  background: #ffffffa0;
+  min-width: 0;
+}
+#targetPreview .paper-sequence,
+#targetPreview .paper-notes {
+  border-color: #d5dbe2;
+  background: #ffffff80;
+  min-width: 0;
+}
+#targetPreview .paper-sequence b,
+#targetPreview .paper-notes b {
+  font-size: 10px !important;
+  color: #26313c;
+}
+#targetPreview .paper-sequence span {
+  font: 10px/1.3 ui-monospace, monospace !important;
+  color: #4a5764 !important;
+  overflow-wrap: anywhere;
+}
+#targetPreview .paper-notes span {
+  font: 9px/1.3 ui-monospace, monospace !important;
+  color: #4a5764 !important;
+  overflow-wrap: anywhere;
+}
+#targetPreview .target-paper #beginCraft {
+  min-height: 42px !important;
+  font-size: 15px !important;
+  margin-top: 6px;
+}
+@media (max-height: 820px) {
+  #targetPreview .target-paper {
+    padding: 12px 14px 10px !important;
+  }
+  #targetPreview .paper-gem {
+    width: min(100%, 240px) !important;
+  }
+  #targetPreview .paper-drawings svg {
+    height: 60px !important;
+  }
+  #targetPreview .paper-docline {
+    font-size: 8px !important;
+  }
+  #targetPreview .paper-specs div,
+  #targetPreview .paper-specs b,
+  #targetPreview .paper-specs span,
+  #targetPreview .paper-sequence span,
+  #targetPreview .paper-sequence b,
+  #targetPreview .paper-notes b {
+    font-size: 9px !important;
+  }
+  #targetPreview .paper-notes span {
+    font-size: 8px !important;
+  }
+}

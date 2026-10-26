@@ -76,52 +76,50 @@ function chipGeometry(chips, scale) {
   return g;
 }
 
-// Break-surface texture: mottled grey-white frost, gouges, and a branching network of dark cracks with pale edges.
-function crackTexture(rnd) {
+// Break-surface texture: the gem's own colour, roughened, scored with a dense mesh of fine scratches and a few deeper cracks.
+function crackTexture(rnd, tint) {
   const S = 512, cv = document.createElement('canvas');
   cv.width = cv.height = S;
-  const g = cv.getContext('2d');
-  g.fillStyle = '#b4abb2';
+  const g = cv.getContext('2d'), base = new THREE.Color(tint), css = (c, k) => `rgb(${Math.round(Math.min(255, c.r * 255 * k))},${Math.round(Math.min(255, c.g * 255 * k))},${Math.round(Math.min(255, c.b * 255 * k))})`;
+  g.fillStyle = css(base, 1);
   g.fillRect(0, 0, S, S);
-  for (let i = 0; i < 90; i++) {
-    const x = rnd() * S, y = rnd() * S, r = 14 + rnd() * 70, light = rnd() < 0.55, grad = g.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, light ? 'rgba(255,255,255,0.45)' : 'rgba(70,55,70,0.38)');
+  for (let i = 0; i < 60; i++) {
+    const x = rnd() * S, y = rnd() * S, r = 14 + rnd() * 60, grad = g.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, rnd() < 0.5 ? css(base, 1.25) : css(base, 0.7));
     grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalAlpha = 0.35;
     g.fillStyle = grad;
     g.fillRect(x - r, y - r, r * 2, r * 2);
   }
-  const img = g.getImageData(0, 0, S, S);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const n = (rnd() - 0.5) * 60;
-    img.data[i] += n;
-    img.data[i + 1] += n * 0.95;
-    img.data[i + 2] += n;
+  g.globalAlpha = 1;
+  g.lineCap = 'round';
+  // Hundreds of hairline scratches, mostly pale with some dark ones, in a few shared directions like a dragged tool.
+  const dirs = [rnd() * 3.14, rnd() * 3.14, rnd() * 3.14];
+  for (let i = 0; i < 420; i++) {
+    const x = rnd() * S, y = rnd() * S, ang = dirs[i % 3] + (rnd() - 0.5) * 0.35, len = 25 + rnd() * 140;
+    g.strokeStyle = rnd() < 0.7 ? `rgba(255,255,255,${0.25 + rnd() * 0.45})` : css(base, 0.35);
+    g.lineWidth = 0.6 + rnd() * 1.3;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+    g.stroke();
   }
-  g.putImageData(img, 0, 0);
-  // Branching cracks: a random walk that forks, drawn pale first (the lifted lip) then dark on top.
-  const cracks = [];
+  // A few deeper cracks in a darker shade of the same colour.
   const walk = (x, y, ang, len, width, depth) => {
-    const pts = [[x, y]];
+    g.strokeStyle = css(base, 0.3);
+    g.lineWidth = width;
+    g.beginPath();
+    g.moveTo(x, y);
     for (let s = 0; s < len; s++) {
       ang += (rnd() - 0.5) * 1.1;
       x += Math.cos(ang) * (5 + rnd() * 9);
       y += Math.sin(ang) * (5 + rnd() * 9);
-      pts.push([x, y]);
-      if (depth < 3 && rnd() < 0.09) walk(x, y, ang + (rnd() < 0.5 ? 1 : -1) * (0.5 + rnd() * 0.8), Math.floor(len * 0.6), width * 0.7, depth + 1);
+      g.lineTo(x, y);
+      if (depth < 2 && rnd() < 0.08) walk(x, y, ang + (rnd() < 0.5 ? 1 : -1) * (0.5 + rnd() * 0.8), Math.floor(len * 0.6), width * 0.7, depth + 1);
     }
-    cracks.push({ pts, width });
+    g.stroke();
   };
-  for (let i = 0; i < 30; i++) walk(rnd() * S, rnd() * S, rnd() * 6.3, 16 + Math.floor(rnd() * 30), 4 + rnd() * 4, 0);
-  g.lineCap = g.lineJoin = 'round';
-  for (const [color, grow, dx] of [['rgba(255,255,255,0.8)', 2.4, 1.4], ['#1b0f17', 0, 0]]) {
-    g.strokeStyle = color;
-    for (const c of cracks) {
-      g.lineWidth = c.width + grow;
-      g.beginPath();
-      c.pts.forEach(([x, y], i) => (i ? g.lineTo(x + dx, y + dx) : g.moveTo(x + dx, y + dx)));
-      g.stroke();
-    }
-  }
+  for (let i = 0; i < 10; i++) walk(rnd() * S, rnd() * S, rnd() * 6.3, 14 + Math.floor(rnd() * 22), 2 + rnd() * 2, 0);
   const t = new THREE.CanvasTexture(cv);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
@@ -141,15 +139,15 @@ const insidePolygon = (f, n, p) => {
 
 // Adds the cracked break surface, its dark rim, cracks running out over the good faces and milky fractures inside the gem.
 // `faces` is the whole broken stone (chips included). Returns a disposer.
-export function addChipScars(scene, chips, faces, seed = 11) {
+export function addChipScars(scene, chips, faces, seed = 11, tint = 0x88aaa8) {
   const rnd = seeded(seed), extent = Math.max(...faces.flat().map((p) => Math.hypot(...p))) || 1;
-  const tex = crackTexture(rnd), geo = chipGeometry(chips, extent * 0.7);
+  const tex = crackTexture(rnd, tint), geo = chipGeometry(chips, extent * 0.7);
   const mat = new THREE.MeshStandardMaterial({
-    color: 0xffffff, map: tex, bumpMap: tex, bumpScale: 1.6, emissive: 0x6d6470, emissiveMap: tex, roughness: 1, metalness: 0,
+    color: 0xffffff, map: tex, bumpMap: tex, bumpScale: 0.8, emissive: new THREE.Color(tint).multiplyScalar(0.35), emissiveMap: tex, roughness: 0.75, metalness: 0,
     side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   const scar = new THREE.Mesh(geo, mat), disposables = [geo, mat, tex];
-  const rim = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 1), new THREE.LineBasicMaterial({ color: 0x120a10 }));
+  const rim = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 1), new THREE.LineBasicMaterial({ color: new THREE.Color(tint).multiplyScalar(0.25) }));
   disposables.push(rim.geometry, rim.material);
   scene.add(scar, rim);
   const extras = [];
@@ -158,7 +156,7 @@ export function addChipScars(scene, chips, faces, seed = 11) {
   const good = faces.filter((f) => !chips.includes(f)), segs = [];
   for (const chip of chips) {
     const cc = centroid(chip);
-    for (let k = 0; k < 4; k++) {
+    for (let k = 0; k < 14; k++) {
       let p = chip[Math.floor(rnd() * chip.length)];
       const f = good.find((g) => g.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) < 1e-4));
       if (!f) continue;
@@ -181,7 +179,7 @@ export function addChipScars(scene, chips, faces, seed = 11) {
   if (segs.length) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(segs, 3));
-    const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x1b0f17, transparent: true, opacity: 0.9 }));
+    const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: new THREE.Color(tint).multiplyScalar(0.3), transparent: true, opacity: 0.85 }));
     extras.push(lines);
     disposables.push(g, lines.material);
   }
@@ -217,7 +215,7 @@ export function addChipScars(scene, chips, faces, seed = 11) {
   if (veils.length) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(veils, 3));
-    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xf4eefa, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: new THREE.Color(tint).lerp(new THREE.Color(0xffffff), 0.5), transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }));
     const gl = new THREE.BufferGeometry();
     gl.setAttribute('position', new THREE.Float32BufferAttribute(veilLines, 3));
     const l = new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, depthWrite: false }));
