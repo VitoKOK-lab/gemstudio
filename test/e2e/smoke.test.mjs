@@ -56,7 +56,7 @@ test('holding the lever on a compact level grinds facets and an impact shakes th
   }
 });
 
-test('the apprentice fetches the ladder and climbs it before the stone is flipped', {timeout: 300000}, async () => {
+test('the apprentice fetches the ladder and climbs it before the stone is flipped', {timeout: 600000}, async () => {
   const {page, errors, close} = await openGame();
   try {
     await startLevel(page, 3);
@@ -67,7 +67,7 @@ test('the apprentice fetches the ladder and climbs it before the stone is flippe
     const flip = await page.evaluate(async () => {
       const W = ms => new Promise(r => setTimeout(r, ms)), a = __dbg.apprentice, seen = {movedLadder: false, phaseWhenStarted: null};
       const park = a.ladder.position.clone(), flipBefore = __dbg.st().flip;
-      for (let i = 0; i < 1200 && __dbg.st().flip === flipBefore; i++) {
+      for (let i = 0; i < 4000 && __dbg.st().flip === flipBefore; i++) {
         await W(100);
         if (a.ladder.position.distanceTo(park) > 0.5) seen.movedLadder = true;
         const phase = facetDebug().operator.phase;

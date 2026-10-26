@@ -6726,7 +6726,9 @@ body.impact-shake .stage::after {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   max-width: calc(100vw - 32px);
 }
-#royalAngle[hidden] {
+#royalAngle[hidden],
+body:has(.panel.sheet-open) #royalAngle,
+body:has(#targetPreview:not([hidden])) #royalAngle {
   display: none;
 }
 #royalAngle .royal-angle-text {
