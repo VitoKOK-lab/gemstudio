@@ -654,3 +654,15 @@ showPracticeResult=function(ev,course){const i=courses.findIndex(c=>c.id===cours
 mainMenu.addEventListener('click',()=>{const cards=$('#menuCards');if(cards&&!$('#menuBlueprints')){const b=document.createElement('button');b.id='menuBlueprints';b.textContent=`圖紙收藏${ownedBlueprints().length?` · ${ownedBlueprints().length}`:''}`;b.onclick=blueprintCollection;cards.after(b);}});
 if($('#entryCards')){const b=document.createElement('button');b.id='entryBlueprints';b.textContent='圖紙收藏';b.onclick=blueprintCollection;$('#entryCards').after(b);}
 if(location.hash==="#debug")Object.assign(window.__dbg,{treasureReveal,blueprintCollection,grantBlueprints,profile:()=>profile});
+
+// Workshop apprentice: turns the dial when settings change, nods at each finished facet, winces at impacts.
+import {createApprentice} from './apprentice.js?v=kenney-2';
+const apprentice=createApprentice({THREE,GLTFLoader,scene});
+let apprenticeSeen={angle:state.angle,index:state.index,facet:state.batchFacet,step:state.step,damage:state.damageCount||0},apprenticeLast=performance.now();
+(function apprenticeLoop(now){requestAnimationFrame(apprenticeLoop);const dt=Math.min(.1,(now-apprenticeLast)/1000);apprenticeLast=now;apprentice.update(dt);
+  const s=apprenticeSeen,d=state.damageCount||0;
+  if(d>s.damage)apprentice.gesture('emote-no');
+  else if(state.step!==s.step||state.batchFacet!==s.facet&&state.batchFacet>0)apprentice.gesture('emote-yes');
+  else if(Math.abs(state.angle-s.angle)>.05||state.index!==s.index)apprentice.gesture('interact-right');
+  apprenticeSeen={angle:state.angle,index:state.index,facet:state.batchFacet,step:state.step,damage:d};})(performance.now());
+if(location.hash==="#debug")window.__dbg.apprentice=apprentice;
