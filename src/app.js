@@ -456,7 +456,7 @@ controls.minDistance = 1;
 controls.maxDistance = 14;
 controls.maxPolarAngle = Math.PI * 0.485;
 controls.enablePan = false;
-scene.add(new THREE.HemisphereLight(0xfffbef, 0xd1b88e, 1.35));
+scene.add(new THREE.HemisphereLight(0xfffbef, 0xd1b88e, 0.85)); // less ambient light, so shadows read clearly
 const key = new THREE.SpotLight(0xfff2d4, 95, 20, 0.78, 0.65, 1.3);
 key.position.set(-2, 7, 3);
 key.target.position.set(0, 0.7, 0);
@@ -469,7 +469,7 @@ key.shadow.bias = -0.00008;
 key.shadow.normalBias = 0.008;
 key.shadow.radius = 2.5;
 scene.add(key);
-const fill = new THREE.SpotLight(0xffefd4, 42, 16, 0.7, 0.75, 1.4);
+const fill = new THREE.SpotLight(0xffefd4, 30, 16, 0.7, 0.75, 1.4);
 fill.position.set(4, 5, 2);
 fill.target.position.set(0.4, 1, 0);
 scene.add(fill, fill.target);
@@ -2187,6 +2187,7 @@ function animate(now) {
       targetAcceptedRun === state.runId &&
       !document.body.classList.contains("adjusting-face"),
   );
+  updateContactShadow();
   if (!$("#modal").open) {
     const { lift, wobble } = armBounce((now - impactAt) / 1000);
     carriage.position.y += lift;
@@ -2243,6 +2244,41 @@ function slamLanding(speed) {
   scene.updateMatrixWorld(true);
   const q = gem.getWorldQuaternion(new THREE.Quaternion()), center = gem.getWorldPosition(new THREE.Vector3());
   chipStoneOnLap(new THREE.Vector3(0, -1, 0).applyQuaternion(q.clone().invert()).toArray(), center, speed);
+}
+// A soft dark spot under the stone on the lap: the closer the stone comes, the smaller and darker it gets, so the player can
+// see whether the next move will touch.
+const contactShadow = (() => {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 128;
+  const g = cv.getContext("2d"), grad = g.createRadialGradient(64, 64, 4, 64, 64, 62);
+  grad.addColorStop(0, "rgba(8,5,12,1)");
+  grad.addColorStop(0.55, "rgba(8,5,12,0.6)");
+  grad.addColorStop(1, "rgba(8,5,12,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }),
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.renderOrder = 3;
+  m.visible = false;
+  m.userData.noCollide = true;
+  scene.add(m);
+  return m;
+})();
+const shadowAt = new THREE.Vector3();
+function updateContactShadow() {
+  const gap = lowestY(state.faces, headAngle, carriage.position.y, state.index, state.flip) - LAP_Y;
+  gem.getWorldPosition(shadowAt);
+  const onLap = Math.hypot(shadowAt.x + 0.65, shadowAt.z) < 1.3 && gap > -0.05 && gap < 2.4 && !operator.busy && openingDone;
+  contactShadow.visible = onLap;
+  if (!onLap) return;
+  const near = 1 - Math.min(1, Math.max(0, gap) / 2.4); // 0 far above, 1 touching
+  const size = 0.45 + (1 - near) * 0.6 + stoneRadius * GEM_SCALE * 0.7;
+  contactShadow.position.set(shadowAt.x, LAP_Y + 0.004, shadowAt.z);
+  contactShadow.scale.set(size, size, 1);
+  contactShadow.material.opacity = 0.22 + near * 0.7;
 }
 function updateWeight() {
   $("#currentWeight").textContent = ((rawWeight() * volume(state.faces)) / initialVolume).toFixed(2);
