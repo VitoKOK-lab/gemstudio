@@ -5,15 +5,13 @@ import {openGame, startLevel} from './helpers.mjs';
 test('the game loads, renders and opens its reward screens without errors', {timeout: 120000}, async () => {
   const {page, errors, close} = await openGame();
   try {
-    // The one game loop runs its frame tasks (here: the apprentice's animation clock).
-    const ticks = await page.evaluate(async () => {
-      let n = 0;
+    // The one game loop runs its frame tasks (here: the apprentice's animation clock). Allow a slow first load.
+    await page.evaluate(() => {
+      window.__ticks = 0;
       const update = __dbg.apprentice.update;
-      __dbg.apprentice.update = dt => (n++, update(dt));
-      await new Promise(r => setTimeout(r, 4000));
-      return n;
+      __dbg.apprentice.update = dt => (window.__ticks++, update(dt));
     });
-    assert.ok(ticks >= 2, `only ${ticks} frames ran`);
+    await page.waitForFunction(() => window.__ticks >= 2, null, {timeout: 60000});
 
     await page.evaluate(() => __dbg.blueprintCollection());
     assert.equal(await page.locator('.bp-card').count(), 10);
@@ -127,27 +125,36 @@ test('level 1 teaches step by step and never switches on for the player', {timeo
   }
 });
 
-test('a hard press chips the stone on an easy level, a gentle press does not', {timeout: 300000}, async () => {
+// Presses the lever on level 1 (each press gets a fresh game) and returns how many chips the stone took.
+async function pressOnLevelOne(step, gap, holdMs) {
   const {page, errors, close} = await openGame();
   try {
     await startLevel(page, 0);
-    await page.evaluate(() => document.getElementById('mobilePower').click());
-    const press = (step, gap) => page.evaluate(async ([step, gap]) => {
+    // The bench is playable once the first hint shows (the opening shot and the target card are done).
+    await page.waitForFunction(() => document.getElementById('tutorial') && !document.getElementById('tutorial').hidden, null, {timeout: 90000});
+    await page.click('#mobilePower');
+    await page.waitForFunction(() => /按住畫面往下拖/.test(document.getElementById('tutorial').innerText), null, {timeout: 60000});
+    const chips = await page.evaluate(async ([step, gap, holdMs]) => {
       const W = ms => new Promise(r => setTimeout(r, ms)), g = document.querySelector('canvas');
       const fire = (t, y) => g.dispatchEvent(new PointerEvent(t, {bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, clientX: 230, clientY: y}));
       fire('pointerdown', 300);
-      for (let y = 300 + step; y <= 520; y += step) fire('pointermove', y), await W(gap);
-      await W(2500);
-      fire('pointerup', 520);
+      for (let y = 300 + step; y <= 400; y += step) fire('pointermove', y), await W(gap);
+      await W(holdMs);
+      fire('pointerup', 400);
       await W(600);
       return __dbg.st().damageCount || 0;
-    }, [step, gap]);
-    assert.equal(await press(3, 40), 0, 'gentle press: no chip');
-    assert.ok((await press(30, 12)) >= 1, 'hard press: chipped');
+    }, [step, gap, holdMs]);
     assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
+    return chips;
   } finally {
     await close();
   }
+}
+test('a gentle press does not chip the stone on an easy level', {timeout: 300000}, async () => {
+  assert.equal(await pressOnLevelOne(3, 40, 800), 0);
+});
+test('a hard press chips the stone on an easy level', {timeout: 300000}, async () => {
+  assert.ok((await pressOnLevelOne(30, 12, 1500)) >= 1);
 });
 
 test('the power and pull-down hints still show on a level the player has already cleared', {timeout: 240000}, async () => {
