@@ -1511,7 +1511,7 @@ function beginGrinding(e) {
   leverSpeed = 0;
   impactPending = 0;
   pressLog = [];
-  pressPeak = 0;
+  speedLog = [];
   landingChecked = false;
   contactFelt = false;
   lockFocus();
@@ -1523,7 +1523,7 @@ function beginGrinding(e) {
 }
 $("#grind").addEventListener("pointerdown", beginGrinding);
 let pressLog = [],
-  pressPeak = 0;
+  speedLog = [];
 function moveGrinding(e) {
   if (!hold) return;
   e.preventDefault();
@@ -1553,13 +1553,9 @@ function moveGrinding(e) {
   // Press speed is judged over the last ~0.45 s, not one noisy event: that is what decides a hard landing on the lap.
   pressLog.push({ t: e.timeStamp, travel: leverTravel });
   while (pressLog.length > 2 && e.timeStamp - pressLog[0].t > 450) pressLog.shift();
-  const back = pressLog.find((m) => e.timeStamp - m.t <= 130 && e.timeStamp - m.t >= 40);
-  if (back) pressPeak = Math.max(pressPeak, (leverTravel - back.travel) / ((e.timeStamp - back.t) / 1000));
-  if (before < 0.76 && leverTravel >= 0.76) {
-    impactPending = Math.min(12, Math.max(leverSpeed, pressPeak));
-    slamLanding(impactPending);
-  }
-  if (leverTravel < 0.6) impactPending = 0;
+  const back = pressLog.find((m) => e.timeStamp - m.t <= 130 && e.timeStamp - m.t >= 16);
+  if (back) speedLog.push({ t: e.timeStamp, v: (leverTravel - back.travel) / ((e.timeStamp - back.t) / 1000) });
+  while (speedLog.length && e.timeStamp - speedLog[0].t > 1500) speedLog.shift();
   leverLastY = e.clientY;
   leverLastTime = e.timeStamp;
   pressure = leverResponse(leverTravel).pressure;
@@ -1957,6 +1953,7 @@ function animate(now) {
         ? "按住下拖"
         : "往下壓";
   if (compactCourse() && !rigMotion.active) tickBatch(dt, now);
+  checkLanding();
   const wasAdjusting = rigMotion.active;
   rigMotion.update(state, dt, openingDone && !entryAwaiting);
   if (rigMotion.active && now - settingClickAt > 90) {
@@ -2020,8 +2017,8 @@ function animate(now) {
     if (radial > 0.38 && radial < 1.26 && max - threshold > -0.035 && !contactFelt) {
       contactFelt = true;
       detent("turn");
-      if (!easyLesson() && impactPending > hardLandingSpeed()) {
-        impactApplied = chipStoneOnLap(normal, center, impactPending);
+      if (!easyLesson() && approachSpeed() > hardLandingSpeed()) {
+        impactApplied = chipStoneOnLap(normal, center, Math.min(12, approachSpeed()));
       }
       impactPending = 0;
     }
@@ -2238,14 +2235,25 @@ function chipStoneOnLap(normal, center, speed) {
   toast("碰撞崩角");
   return true;
 }
-// Easy levels place the stone on the lap for the player, so a slam is judged right when the press bottoms out.
-function slamLanding(speed) {
-  if (!easyLesson() || landingChecked || !hold || !state.power || operator.busy) return;
-  landingChecked = true;
-  if (speed <= hardLandingSpeed()) return;
+// How fast the player was pressing down just before the stone landed (the fastest sample in the last 0.9 s), in stroke lengths per second.
+function approachSpeed() {
+  // Measured against the finger's last move, so a slow frame that lands the stone late does not lose the speed.
+  const ref = Math.min(performance.now(), (speedLog.at(-1)?.t ?? 0) + 250);
+  return Math.max(0, ...speedLog.filter((m) => ref - m.t <= 900).map((m) => m.v));
+}
+// Easy levels put the stone on the lap for the player. The landing is judged on the frame the stone really touches the lap:
+// a fast press that is still in the air chips nothing.
+function checkLanding() {
+  if (!easyLesson() || landingChecked || !hold || !state.power || operator.busy || !openingDone) return;
+  const gap = lowestY(state.faces, headAngle, carriage.position.y, state.index, state.flip) - LAP_Y;
   scene.updateMatrixWorld(true);
-  const q = gem.getWorldQuaternion(new THREE.Quaternion()), center = gem.getWorldPosition(new THREE.Vector3());
-  chipStoneOnLap(new THREE.Vector3(0, -1, 0).applyQuaternion(q.clone().invert()).toArray(), center, speed);
+  const center = gem.getWorldPosition(new THREE.Vector3());
+  if (gap > 0.012 || Math.hypot(center.x + 0.65, center.z) > 1.3) return; // not touching the lap yet
+  landingChecked = true;
+  const speed = approachSpeed();
+  if (speed <= hardLandingSpeed()) return;
+  const q = gem.getWorldQuaternion(new THREE.Quaternion());
+  chipStoneOnLap(new THREE.Vector3(0, -1, 0).applyQuaternion(q.clone().invert()).toArray(), center, Math.min(12, speed));
 }
 // A soft dark spot under the stone on the lap: the closer the stone comes, the smaller and darker it gets, so the player can
 // see whether the next move will touch.

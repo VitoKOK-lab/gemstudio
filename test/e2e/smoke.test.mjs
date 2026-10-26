@@ -128,7 +128,7 @@ test('level 1 teaches step by step and never switches on for the player', {timeo
 });
 
 // Presses the lever on level 1 (each press gets a fresh game) and returns how many chips the stone took.
-async function pressOnLevelOne(step, gap, holdMs) {
+async function pressOnLevelOne(step, gap, holdMs, endY = 400) {
   const {page, errors, close} = await openGame();
   try {
     await startLevel(page, 0);
@@ -136,16 +136,16 @@ async function pressOnLevelOne(step, gap, holdMs) {
     await page.waitForFunction(() => document.getElementById('tutorial') && !document.getElementById('tutorial').hidden, null, {timeout: 90000});
     await page.click('#mobilePower');
     await page.waitForFunction(() => /按住畫面往下拖/.test(document.getElementById('tutorial').innerText), null, {timeout: 60000});
-    const chips = await page.evaluate(async ([step, gap, holdMs]) => {
+    const chips = await page.evaluate(async ([step, gap, holdMs, endY]) => {
       const W = ms => new Promise(r => setTimeout(r, ms)), g = document.querySelector('canvas');
       const fire = (t, y) => g.dispatchEvent(new PointerEvent(t, {bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, clientX: 230, clientY: y}));
       fire('pointerdown', 300);
-      for (let y = 300 + step; y <= 400; y += step) fire('pointermove', y), await W(gap);
+      for (let y = 300 + step; y <= endY; y += step) fire('pointermove', y), await W(gap);
       await W(holdMs);
-      fire('pointerup', 400);
+      fire('pointerup', endY);
       await W(600);
       return __dbg.st().damageCount || 0;
-    }, [step, gap, holdMs]);
+    }, [step, gap, holdMs, endY]);
     assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
     return chips;
   } finally {
@@ -154,6 +154,9 @@ async function pressOnLevelOne(step, gap, holdMs) {
 }
 test('a gentle press does not chip the stone on an easy level', {timeout: 300000}, async () => {
   assert.equal(await pressOnLevelOne(3, 40, 800), 0);
+});
+test('a fast move that stops in the air does not chip: nothing has touched the lap', {timeout: 300000}, async () => {
+  assert.equal(await pressOnLevelOne(20, 12, 1500, 340), 0);
 });
 test('a hard press chips the stone on an easy level', {timeout: 300000}, async () => {
   assert.ok((await pressOnLevelOne(30, 12, 1500)) >= 1);
