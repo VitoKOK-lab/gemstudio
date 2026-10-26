@@ -36,7 +36,7 @@ test('level 1 can be played to the end and offers level 2', {skip: !process.env.
         }
         if (!c.hidden && stage !== '輕鬆研磨') continue;
         fire('pointerdown', 400);
-        for (let y = 404; y <= 500; y += 8) fire('pointermove', y), await W(20);
+        for (let y = 404; y <= 500; y += 4) fire('pointermove', y), await W(24);
         holding = true;
         holdStart = i;
       }

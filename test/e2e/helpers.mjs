@@ -3,7 +3,7 @@ import {chromium} from 'playwright';
 import {serve} from '../../scripts/serve.mjs';
 import {resolve} from 'node:path';
 
-export async function openGame({zoom = 0, viewport = {width: 456, height: 798}} = {}) {
+export async function openGame({zoom = 0, viewport = {width: 456, height: 798}, beforeLoad = null} = {}) {
   const server = await serve(resolve(process.env.E2E_DIR || 'src'), 0);
   const url = `http://127.0.0.1:${server.address().port}/#debug`;
   const browser = await chromium.launch({args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']});
@@ -13,6 +13,7 @@ export async function openGame({zoom = 0, viewport = {width: 456, height: 798}} 
   page.on('console', m => m.type() === 'error' && errors.push(m.text()));
   page.on('response', r => r.status() >= 400 && errors.push(`${r.status()} ${r.url()}`));
   await page.addInitScript(z => localStorage.setItem('facet-camera-v2', JSON.stringify({zoom: z, yaw: 0, pitch: 0.36})), zoom);
+  if (beforeLoad) await page.addInitScript(beforeLoad);
   await page.goto(url, {waitUntil: 'domcontentloaded'});
   await page.waitForFunction(() => window.__dbg && window.facetDebug, null, {timeout: 90000});
   const close = async () => {

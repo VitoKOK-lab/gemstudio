@@ -149,3 +149,16 @@ test('a hard press chips the stone on an easy level, a gentle press does not', {
     await close();
   }
 });
+
+test('the power and pull-down hints still show on a level the player has already cleared', {timeout: 240000}, async () => {
+  const {page, errors, close} = await openGame({viewport: {width: 430, height: 860}, beforeLoad: () => localStorage.setItem('facet-profile', JSON.stringify({completed: ['first', 'ring'], exams: {}, certificates: [], history: []}))});
+  try {
+    await startLevel(page, 0);
+    await page.waitForFunction(() => /點這裡開機/.test(document.getElementById('tutorial').innerText), null, {timeout: 60000});
+    await page.click('#mobilePower');
+    await page.waitForFunction(() => /按住畫面往下拖/.test(document.getElementById('tutorial').innerText), null, {timeout: 30000});
+    assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
+  } finally {
+    await close();
+  }
+});

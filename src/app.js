@@ -1553,7 +1553,10 @@ function moveGrinding(e) {
   while (pressLog.length > 2 && e.timeStamp - pressLog[0].t > 450) pressLog.shift();
   const back = pressLog.find((m) => e.timeStamp - m.t <= 130 && e.timeStamp - m.t >= 40);
   if (back) pressPeak = Math.max(pressPeak, (leverTravel - back.travel) / ((e.timeStamp - back.t) / 1000));
-  if (before < 0.76 && leverTravel >= 0.76) impactPending = Math.min(12, Math.max(leverSpeed, pressPeak));
+  if (before < 0.76 && leverTravel >= 0.76) {
+    impactPending = Math.min(12, Math.max(leverSpeed, pressPeak));
+    slamLanding(impactPending);
+  }
   if (leverTravel < 0.6) impactPending = 0;
   leverLastY = e.clientY;
   leverLastTime = e.timeStamp;
@@ -1951,7 +1954,7 @@ function animate(now) {
       : matchMedia("(pointer:fine)").matches
         ? "按住下拖"
         : "往下壓";
-  if (compactCourse() && !rigMotion.active) (tickBatch(dt, now), checkAssistedLanding());
+  if (compactCourse() && !rigMotion.active) tickBatch(dt, now);
   const wasAdjusting = rigMotion.active;
   rigMotion.update(state, dt, openingDone && !entryAwaiting);
   if (rigMotion.active && now - settingClickAt > 90) {
@@ -2015,7 +2018,7 @@ function animate(now) {
     if (radial > 0.38 && radial < 1.26 && max - threshold > -0.035 && !contactFelt) {
       contactFelt = true;
       detent("turn");
-      if (impactPending > hardLandingSpeed()) {
+      if (!easyLesson() && impactPending > hardLandingSpeed()) {
         impactApplied = chipStoneOnLap(normal, center, impactPending);
       }
       impactPending = 0;
@@ -2213,7 +2216,7 @@ function stickServiceAngle() {
   return best;
 }
 // A hard landing: the faster the press, the bigger the chip. Easy levels forgive a bit more than the exams.
-const hardLandingSpeed = () => (easyLesson() ? 6 : 2.2); // stroke lengths per second; the stroke is 80 px, so 6 is about 480 px/s
+const hardLandingSpeed = () => (easyLesson() ? 4 : 2.2); // stroke lengths per second; the stroke is 80 px, so 4 is about 320 px/s
 let landingChecked = false;
 function chipStoneOnLap(normal, center, speed) {
   const hit = impactChip(state.faces, normal, speed);
@@ -2232,15 +2235,14 @@ function chipStoneOnLap(normal, center, speed) {
   toast("碰撞崩角");
   return true;
 }
-// Levels where the stone is positioned for the player (no physical touch test) still judge the landing the same way.
-function checkAssistedLanding() {
-  if (!compactCourse() || landingChecked || !hold || !state.power || state.inspecting || operator.busy || contact < 0.96) return;
+// Easy levels place the stone on the lap for the player, so a slam is judged right when the press bottoms out.
+function slamLanding(speed) {
+  if (!easyLesson() || landingChecked || !hold || !state.power || operator.busy) return;
   landingChecked = true;
-  const speed = Math.max(impactPending, pressPeak);
   if (speed <= hardLandingSpeed()) return;
   scene.updateMatrixWorld(true);
   const q = gem.getWorldQuaternion(new THREE.Quaternion()), center = gem.getWorldPosition(new THREE.Vector3());
-  chipStoneOnLap(new THREE.Vector3(0, -1, 0).applyQuaternion(q.clone().invert()).toArray(), center, Math.min(12, speed));
+  chipStoneOnLap(new THREE.Vector3(0, -1, 0).applyQuaternion(q.clone().invert()).toArray(), center, speed);
 }
 function updateWeight() {
   $("#currentWeight").textContent = ((rawWeight() * volume(state.faces)) / initialVolume).toFixed(2);
@@ -5267,10 +5269,17 @@ if ($("#entryCards")) {
 
 // First-time coaching on the easy levels: one instruction at a time, pointing at what to touch. Never acts for the player.
 const tutorial = createTutorial();
+let tutorialRun = null,
+  tutorialPressed = false;
 function tutorialStep() {
   if (!easyLesson() || !openingDone || entryAwaiting || targetAcceptedRun !== state.runId || operator.busy || $("#modal").open) return null;
-  if (profile.completed?.includes(state.courseId)) return null;
+  if (tutorialRun !== state.runId) (tutorialRun = state.runId), (tutorialPressed = false);
+  if (hold) tutorialPressed = true;
   if (!state.power) return { id: "power", target: "#mobilePower", title: "第 1 步", text: "點這裡開機", sub: "磨盤要先轉起來" };
+  // Switching on and pulling down are shown every time until the player has done it in this run; the rest only the first time through.
+  if (!hold && !tutorialPressed && !facetReady())
+    return { id: "press", drag: true, title: "第 2 步", text: "手指按住畫面往下拖", sub: "往下壓，石頭就貼上磨盤" };
+  if (profile.completed?.includes(state.courseId)) return null;
   const ready = facetReady();
   if (ready && state.inspecting) {
     const last = state.step === sequence().length - 1;
@@ -5279,7 +5288,7 @@ function tutorialStep() {
   if (ready) return { id: "release", title: "磨好了", text: "放開手，看看亮起的面" };
   if (hold && contactFelt) return { id: "keep", title: "第 3 步", text: "保持按住，磨到面亮起來", sub: "聽到磨削聲就對了" };
   if (hold) return { id: "down", title: "第 2 步", text: "慢慢往下拖，到底", sub: "太快會撞到崩角" };
-  return { id: "press", drag: true, title: "第 2 步", text: "手指按住畫面往下拖", sub: "往下壓，石頭就貼上磨盤" };
+  return null;
 }
 everyFrame(() => tutorial.show(tutorialStep()), 120);
 
