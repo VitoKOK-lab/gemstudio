@@ -188,3 +188,23 @@ test('each level gets its own scene: new colours, furniture and wandering animal
     await close();
   }
 });
+
+test('royal levels need their blueprint: locked in the list, refused to start, open once the blueprint is earned', {timeout: 300000}, async () => {
+  const {page, errors, close} = await openGame();
+  try {
+    await page.evaluate(() => document.getElementById('entryCourses').click());
+    await page.waitForSelector('[data-course]');
+    const locked = await page.evaluate(() => [...document.querySelectorAll('[data-course]')].map((b, i) => [i, b.classList.contains('locked')]).filter(([, l]) => l).map(([i]) => i));
+    assert.deepEqual(locked, [7, 8, 9, 10, 11, 12, 13, 14, 15, 16], 'levels 8-17 are locked, 1-7 are open');
+    assert.match(await page.innerText('[data-course="7"]'), /通過第 7 關/);
+    await page.evaluate(() => { document.getElementById('modal').close(); __dbg.startCourse(7); });
+    await page.waitForTimeout(1500);
+    assert.equal(await page.evaluate(() => document.getElementById('modal').open), false, 'a locked level does not start');
+    assert.match(await page.innerText('#toast'), /圖紙/);
+    await page.evaluate(() => { __dbg.grantBlueprints([8]); __dbg.startCourse(7); });
+    await page.waitForFunction(() => document.getElementById('modal').open, null, {timeout: 30000});
+    assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
+  } finally {
+    await close();
+  }
+});

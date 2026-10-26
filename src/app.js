@@ -38,7 +38,7 @@ import {
 import { RGBELoader } from "./vendor/addons/loaders/RGBELoader.js";
 import { GLTFLoader } from "./vendor/addons/loaders/GLTFLoader.js";
 import * as THREE from "three";
-import { blueprintGrants, addBlueprints } from "./rewards.js";
+import { blueprintGrants, addBlueprints, blueprintSource } from "./rewards.js";
 import { createBlueprintUI } from "./blueprint-ui.js";
 import { fractureFaces, addChipScars } from "./chip-card.js";
 import { impactSound, screenShake, armBounce, treasureChime } from "./impact-fx.js";
@@ -3154,7 +3154,7 @@ function planning(options) {
 }
 function academy() {
   modal(
-    `<span class="modal-eyebrow">ROYAL GEM JOURNEY</span><h2>選擇關卡</h2><p class="modal-note">${lastVisit() ? `上次玩到第 ${Math.max(1, courses.findIndex((c) => c.id === lastVisit().courseId) + 1)} 關 · 第 ${(lastVisit().step || 0) + 1} 步` : "選一關，開始磨出光芒。"}</p><div class="course-list">${courses.map((c, i) => `${i === 0 ? "<h3>入門 · 玩出光澤</h3>" : i === 3 ? "<h3>進階 · 認識工藝</h3>" : i === 5 ? "<h3>選擇 · 留住原石</h3>" : i === 7 ? "<h3>花式切割進階 · 皇室工坊</h3>" : ""}<button data-course="${i}"><span>${profile.completed.includes(c.id) ? "✧" : String(i + 1).padStart(2, "0")}</span><img class="course-thumb" src="images/cuts/${c.id}.webp" alt="" loading="lazy" onerror="this.remove()"><div><b>${c.independent ? "留下更多藍寶石" : c.name}</b><small>${c.advanced ? "五顆裸石任選，自己決定方向與切面。" : c.detail}</small></div><em>${profile.completed.includes(c.id) ? "已通關 · 重玩" : lastVisit()?.courseId === c.id ? "上次玩到" : "開始"}</em></button>`).join("")}</div><details><summary>備份進度</summary><button id="exportProfile">下載備份</button><label>還原備份<input type="file" id="importProfile" accept="application/json"></label></details>`,
+    `<span class="modal-eyebrow">ROYAL GEM JOURNEY</span><h2>選擇關卡</h2><p class="modal-note">${lastVisit() ? `上次玩到第 ${Math.max(1, courses.findIndex((c) => c.id === lastVisit().courseId) + 1)} 關 · 第 ${(lastVisit().step || 0) + 1} 步` : "選一關，開始磨出光芒。"}</p><div class="course-list">${courses.map((c, i) => `${i === 0 ? "<h3>入門 · 玩出光澤</h3>" : i === 3 ? "<h3>進階 · 認識工藝</h3>" : i === 5 ? "<h3>選擇 · 留住原石</h3>" : i === 7 ? "<h3>花式切割進階 · 皇室工坊</h3>" : ""}<button data-course="${i}"${levelLocked(i) ? ' class="locked" aria-disabled="true"' : ""}><span>${levelLocked(i) ? "🔒" : profile.completed.includes(c.id) ? "✧" : String(i + 1).padStart(2, "0")}</span><img class="course-thumb" src="images/cuts/${c.id}.webp" alt="" loading="lazy" onerror="this.remove()"><div><b>${c.independent ? "留下更多藍寶石" : c.name}</b><small>${levelLocked(i) ? lockedText(i) : c.advanced ? "五顆裸石任選，自己決定方向與切面。" : c.detail}</small></div><em>${levelLocked(i) ? "需要圖紙" : profile.completed.includes(c.id) ? "已通關 · 重玩" : lastVisit()?.courseId === c.id ? "上次玩到" : "開始"}</em></button>`).join("")}</div><details><summary>備份進度</summary><button id="exportProfile">下載備份</button><label>還原備份<input type="file" id="importProfile" accept="application/json"></label></details>`,
   );
   $$("[data-course]").forEach(
     (b) =>
@@ -3182,7 +3182,9 @@ function academy() {
               )
               .slice(0, courses.length)
           : profile.cards || [],
+        blueprints: Array.isArray(data.profile.blueprints) ? data.profile.blueprints.filter((n) => Number.isInteger(n)) : profile.blueprints || [],
       };
+      grantFromProgress();
       saveProfile();
       academy();
       toast("關卡進度已還原");
@@ -3719,8 +3721,18 @@ function advancedPlanning(course, i) {
   }
   draw();
 }
+// The royal levels (8 and up) can only be played once their blueprint is in the collection (or the level is already cleared).
+function levelLocked(i) {
+  const c = courses[i];
+  return Boolean(c?.advanced) && !ownedBlueprints().includes(i + 1) && !profile.completed?.includes(c.id);
+}
+const lockedText = (i) => `第 ${i + 1} 關要先拿到圖紙：通過第 ${blueprintSource(i + 1)} 關就能獲得`;
 function startCourse(i) {
   nextCourseCue.hidden = true;
+  if (levelLocked(i)) {
+    toast(lockedText(i));
+    return;
+  }
   const c = courses[i];
   if (c.advanced) {
     advancedPlanning(c, i);
@@ -5272,9 +5284,11 @@ function grantBlueprints(levels) {
   if (fresh.length) saveProfile();
   return fresh;
 }
-courses.forEach((c, i) => {
-  if (profile.completed?.includes(c.id)) grantBlueprints(blueprintGrants(i + 1, courses));
-});
+const grantFromProgress = () =>
+  courses.forEach((c, i) => {
+    if (profile.completed?.includes(c.id)) grantBlueprints(blueprintGrants(i + 1, courses));
+  });
+grantFromProgress();
 const blueprintUI = createBlueprintUI({
   modal,
   $,
