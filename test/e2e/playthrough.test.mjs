@@ -26,6 +26,10 @@ test('level 1 can be played to the end and offers level 2', {skip: !process.env.
           continue;
         }
         if (d.operator.busy) continue;
+        if (!s.power) {
+          document.getElementById('mobilePower').click();
+          continue;
+        }
         if (!c.hidden && !c.disabled && text && stage !== '輕鬆研磨') {
           c.click();
           continue;

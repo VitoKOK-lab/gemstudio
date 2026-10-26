@@ -45,6 +45,7 @@ import { impactSound, screenShake, armBounce, treasureChime } from "./impact-fx.
 import { buildRoyalMachine } from "./royal-machine.js";
 import { createApprentice } from "./apprentice.js";
 import { screenConfetti } from "./confetti.js";
+import { createTutorial } from "./tutorial.js";
 import { plans, buildPlan, planSVG, catalogPlanIds, specialistPlans } from "./plans.js";
 import {
   LAP_Y,
@@ -1461,9 +1462,10 @@ function beginGrinding(e) {
     assistIntro();
     if (operator.busy) return;
     if (!state.power) {
-      sound();
-      state.power = true;
-      updateUI();
+      // The player switches the machine on themselves: point at the switch instead of doing it for them.
+      toast("先點電源開機");
+      tutorial.nudge();
+      return;
     }
   }
   if (!validatePractice()) return;
@@ -1506,6 +1508,9 @@ function beginGrinding(e) {
   leverTravel = 0;
   leverSpeed = 0;
   impactPending = 0;
+  pressLog = [];
+  pressPeak = 0;
+  landingChecked = false;
   contactFelt = false;
   lockFocus();
   startY = leverLastY = e.clientY;
@@ -1515,6 +1520,8 @@ function beginGrinding(e) {
   $("#grind strong").textContent = "慢慢下放";
 }
 $("#grind").addEventListener("pointerdown", beginGrinding);
+let pressLog = [],
+  pressPeak = 0;
 function moveGrinding(e) {
   if (!hold) return;
   e.preventDefault();
@@ -1541,7 +1548,12 @@ function moveGrinding(e) {
   }
   const before = leverTravel;
   leverTravel = THREE.MathUtils.clamp(leverTravel + dy / leverStroke(), 0, 1.5);
-  if (before < 0.76 && leverTravel >= 0.76) impactPending = Math.min(12, leverSpeed);
+  // Press speed is judged over the last ~0.45 s, not one noisy event: that is what decides a hard landing on the lap.
+  pressLog.push({ t: e.timeStamp, travel: leverTravel });
+  while (pressLog.length > 2 && e.timeStamp - pressLog[0].t > 450) pressLog.shift();
+  const back = pressLog.find((m) => e.timeStamp - m.t <= 130 && e.timeStamp - m.t >= 40);
+  if (back) pressPeak = Math.max(pressPeak, (leverTravel - back.travel) / ((e.timeStamp - back.t) / 1000));
+  if (before < 0.76 && leverTravel >= 0.76) impactPending = Math.min(12, Math.max(leverSpeed, pressPeak));
   if (leverTravel < 0.6) impactPending = 0;
   leverLastY = e.clientY;
   leverLastTime = e.timeStamp;
@@ -1939,7 +1951,7 @@ function animate(now) {
       : matchMedia("(pointer:fine)").matches
         ? "按住下拖"
         : "往下壓";
-  if (compactCourse() && !rigMotion.active) tickBatch(dt, now);
+  if (compactCourse() && !rigMotion.active) (tickBatch(dt, now), checkAssistedLanding());
   const wasAdjusting = rigMotion.active;
   rigMotion.update(state, dt, openingDone && !entryAwaiting);
   if (rigMotion.active && now - settingClickAt > 90) {
@@ -1999,34 +2011,12 @@ function animate(now) {
       stopGap = lowestY(state.faces, a, mastY(state.height), state.index, state.flip) - lapY;
     let impactApplied = false;
     lastContactInfo = { supported: Math.abs(max - threshold) < 0.02, stopGap, radial };
-    if (radial > 0.38 && radial < 1.26 && Math.abs(max - threshold) < 0.035 && !contactFelt) {
+    // Touching or already past the lap surface: a fast press must not slip through between two frames.
+    if (radial > 0.38 && radial < 1.26 && max - threshold > -0.035 && !contactFelt) {
       contactFelt = true;
       detent("turn");
-      if (impactPending > 2.2 && !easyLesson()) {
-        const hit = impactChip(state.faces, normal, impactPending);
-        if (hit) {
-          cuttingFX.emit(new THREE.Vector3(center.x, lapY, center.z), pressure, true);
-          impactApplied = true;
-          state.faces = hit.faces;
-          state.log.push({
-            type: "impact",
-            mechanicsVersion: 2,
-            step: state.step,
-            angle: state.angle,
-            index: state.index,
-            height: state.height,
-            flip: state.flip,
-            n: normal,
-            speed: impactPending,
-          });
-          state.damageCount = (state.damageCount || 0) + 1;
-          inspectedStep = -1;
-          rebuild();
-          updateWeight();
-          $("#grind").classList.add("impact");
-          setTimeout(() => $("#grind").classList.remove("impact"), 350);
-          toast("碰撞崩角");
-        }
+      if (impactPending > hardLandingSpeed()) {
+        impactApplied = chipStoneOnLap(normal, center, impactPending);
       }
       impactPending = 0;
     }
@@ -2221,6 +2211,36 @@ function stickServiceAngle() {
   arm.rotation.z = saved;
   scene.updateMatrixWorld(true);
   return best;
+}
+// A hard landing: the faster the press, the bigger the chip. Easy levels forgive a bit more than the exams.
+const hardLandingSpeed = () => (easyLesson() ? 6 : 2.2); // stroke lengths per second; the stroke is 80 px, so 6 is about 480 px/s
+let landingChecked = false;
+function chipStoneOnLap(normal, center, speed) {
+  const hit = impactChip(state.faces, normal, speed);
+  if (!hit) return false;
+  cuttingFX.emit(new THREE.Vector3(center.x, lapY, center.z), pressure, true);
+  state.faces = hit.faces;
+  state.log.push({
+    type: "impact", mechanicsVersion: 2, step: state.step, angle: state.angle, index: state.index, height: state.height, flip: state.flip, n: normal, speed,
+  });
+  state.damageCount = (state.damageCount || 0) + 1;
+  inspectedStep = -1;
+  rebuild();
+  updateWeight();
+  $("#grind").classList.add("impact");
+  setTimeout(() => $("#grind").classList.remove("impact"), 350);
+  toast("碰撞崩角");
+  return true;
+}
+// Levels where the stone is positioned for the player (no physical touch test) still judge the landing the same way.
+function checkAssistedLanding() {
+  if (!compactCourse() || landingChecked || !hold || !state.power || state.inspecting || operator.busy || contact < 0.96) return;
+  landingChecked = true;
+  const speed = Math.max(impactPending, pressPeak);
+  if (speed <= hardLandingSpeed()) return;
+  scene.updateMatrixWorld(true);
+  const q = gem.getWorldQuaternion(new THREE.Quaternion()), center = gem.getWorldPosition(new THREE.Vector3());
+  chipStoneOnLap(new THREE.Vector3(0, -1, 0).applyQuaternion(q.clone().invert()).toArray(), center, Math.min(12, speed));
 }
 function updateWeight() {
   $("#currentWeight").textContent = ((rawWeight() * volume(state.faces)) / initialVolume).toFixed(2);
@@ -2617,8 +2637,6 @@ $("#coachAction").onclick = () => {
   } else if (g[0] === "工具") {
     performGuidedTool();
   } else if (g[0] === "輕鬆研磨") {
-    sound();
-    state.power = true;
     assistIntro();
     updateUI();
   } else if (g[0] === "成品") {
@@ -5246,6 +5264,24 @@ if ($("#entryCards")) {
   b.onclick = blueprintUI.collection;
   $("#entryCards").after(b);
 }
+
+// First-time coaching on the easy levels: one instruction at a time, pointing at what to touch. Never acts for the player.
+const tutorial = createTutorial();
+function tutorialStep() {
+  if (!easyLesson() || !openingDone || entryAwaiting || targetAcceptedRun !== state.runId || operator.busy || $("#modal").open) return null;
+  if (profile.completed?.includes(state.courseId)) return null;
+  if (!state.power) return { id: "power", target: "#mobilePower", title: "第 1 步", text: "點這裡開機", sub: "磨盤要先轉起來" };
+  const ready = facetReady();
+  if (ready && state.inspecting) {
+    const last = state.step === sequence().length - 1;
+    return { id: "next", target: "#coachAction", title: last ? "全部完成" : "好，繼續", text: last ? "點這裡欣賞作品" : "點這裡，磨下一面" };
+  }
+  if (ready) return { id: "release", title: "磨好了", text: "放開手，看看亮起的面" };
+  if (hold && contactFelt) return { id: "keep", title: "第 3 步", text: "保持按住，磨到面亮起來", sub: "聽到磨削聲就對了" };
+  if (hold) return { id: "down", title: "第 2 步", text: "慢慢往下拖，到底", sub: "太快會撞到崩角" };
+  return { id: "press", drag: true, title: "第 2 步", text: "手指按住畫面往下拖", sub: "往下壓，石頭就貼上磨盤" };
+}
+everyFrame(() => tutorial.show(tutorialStep()), 120);
 
 // Workshop apprentice: walks to the handwheel for any setting change (the player's or auto mode's),
 // does the stone flips and lap changes for the operator, nods at each finished facet (impacts: onImpact).

@@ -39,7 +39,8 @@ test('holding the lever on a compact level grinds facets and an impact shakes th
     await page.evaluate(async () => {
       const W = ms => new Promise(r => setTimeout(r, ms)), g = document.querySelector('canvas');
       const fire = (t, y) => g.dispatchEvent(new PointerEvent(t, {bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, clientX: 230, clientY: y}));
-      if (!__dbg.st().power) document.getElementById('power').click();
+      if (!__dbg.st().power) document.getElementById('mobilePower').click();
+      await W(400);
       fire('pointerdown', 400);
       for (let y = 404; y <= 500; y += 8) fire('pointermove', y), await W(20);
       await W(6000);
@@ -96,6 +97,53 @@ test('clearing a level makes both apprentices dance and throw confetti', {timeou
     const during = await page.evaluate(() => ({dial: __dbg.apprentice.job, push: __dbg.pusher.job, bits: __dbg.apprentice.stats.bits + __dbg.pusher.stats.bits}));
     assert.deepEqual([during.dial, during.push], ['dance', 'dance']);
     assert.ok(during.bits > 0, 'confetti pieces in the air');
+    assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
+  } finally {
+    await close();
+  }
+});
+
+test('level 1 teaches step by step and never switches on for the player', {timeout: 240000}, async () => {
+  const {page, errors, close} = await openGame({viewport: {width: 430, height: 860}});
+  try {
+    await startLevel(page, 0);
+    await page.waitForFunction(() => document.getElementById('tutorial') && !document.getElementById('tutorial').hidden, null, {timeout: 60000});
+    assert.match(await page.innerText('#tutorial .tut-bubble'), /點這裡開機/);
+    // Pressing the lever while off must not start the motor: it only nudges toward the switch.
+    await page.evaluate(() => {
+      const g = document.querySelector('canvas'), fire = (t, y) => g.dispatchEvent(new PointerEvent(t, {bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, clientX: 215, clientY: y}));
+      fire('pointerdown', 400);
+      for (let y = 410; y <= 500; y += 10) fire('pointermove', y);
+      fire('pointerup', 500);
+    });
+    await page.waitForTimeout(1500);
+    assert.equal(await page.evaluate(() => __dbg.st().power), false, 'still off');
+    await page.click('#mobilePower');
+    await page.waitForFunction(() => /按住畫面往下拖/.test(document.querySelector('#tutorial .tut-bubble').innerText), null, {timeout: 30000});
+    assert.equal(await page.evaluate(() => __dbg.st().power), true);
+    assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
+  } finally {
+    await close();
+  }
+});
+
+test('a hard press chips the stone on an easy level, a gentle press does not', {timeout: 300000}, async () => {
+  const {page, errors, close} = await openGame();
+  try {
+    await startLevel(page, 0);
+    await page.evaluate(() => document.getElementById('mobilePower').click());
+    const press = (step, gap) => page.evaluate(async ([step, gap]) => {
+      const W = ms => new Promise(r => setTimeout(r, ms)), g = document.querySelector('canvas');
+      const fire = (t, y) => g.dispatchEvent(new PointerEvent(t, {bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, clientX: 230, clientY: y}));
+      fire('pointerdown', 300);
+      for (let y = 300 + step; y <= 520; y += step) fire('pointermove', y), await W(gap);
+      await W(2500);
+      fire('pointerup', 520);
+      await W(600);
+      return __dbg.st().damageCount || 0;
+    }, [step, gap]);
+    assert.equal(await press(3, 40), 0, 'gentle press: no chip');
+    assert.ok((await press(30, 12)) >= 1, 'hard press: chipped');
     assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
   } finally {
     await close();
