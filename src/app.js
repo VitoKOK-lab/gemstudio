@@ -5227,7 +5227,7 @@ const handwheels = { angle: dial, index: indexWheel, height: knob };
 let apprenticeSeen = { angle: state.angle, index: state.index, height: state.height, facet: state.batchFacet, step: state.step },
   apprenticeLast = performance.now();
 everyFrame((now) => {
-  apprentice.update(Math.min(0.1, (now - apprenticeLast) / 1000));
+  apprentice.update(Math.min(0.5, (now - apprenticeLast) / 1000)); // her motion is time-based, so a slow frame never stalls the job
   apprenticeLast = now;
   const s = apprenticeSeen;
   const turned = Math.abs(state.angle - s.angle) > 0.01 ? "angle" : state.index !== s.index ? "index" : Math.abs(state.height - s.height) > 0.005 ? "height" : null;

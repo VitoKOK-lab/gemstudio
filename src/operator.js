@@ -190,9 +190,9 @@ export function createOperator({ scene, arm, carriage, pivot, lap, nut, waterArm
       clearTable(adjust);
     }
     if (!job) return;
-    // Still waiting for the apprentice (never longer than 60 s, so a stuck helper cannot block the game).
+    // Still waiting for the apprentice (never longer than 3 min, so a stuck helper cannot block the game).
     if (job.waiting) {
-      if (performance.now() - job.waiting < 60000) return;
+      if (performance.now() - job.waiting < 180000) return;
       job.waiting = 0;
       job.last = now;
     }
