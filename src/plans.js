@@ -1,5 +1,5 @@
-import {GEM_SCALE} from './contact.js?v=contact-29';
-import {box,clip,volume,dot} from './geometry.js?v=contact-29';
+import {GEM_SCALE} from './contact.js';
+import {box,clip,volume,dot} from './geometry.js';
 // Original game-only constructions. No angles or facet layouts transcribed from reference sheets.
 // These are geometric practice designs for simulated glass, not optically certified cutting recipes.
 const specs=[

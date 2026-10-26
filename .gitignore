@@ -2,3 +2,6 @@
 *.bak*
 __pycache__/
 .claude/
+node_modules/
+dist/
+test-results/

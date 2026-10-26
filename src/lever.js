@@ -1,4 +1,4 @@
-import {clip,dot,volume} from './geometry.js?v=contact-29';
+import {clip,dot,volume} from './geometry.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 // Input is hand travel, not screen pressure. The final stroke compresses against the lap.
 export function leverResponse(travel){const t=clamp(travel,0,1.5),touch=.76;return {contact:clamp(t/touch,0,1),pressure:clamp(.06+(t-touch)*1.35,.06,1),handle:t<=touch?t:touch+(t-touch)*.22};}

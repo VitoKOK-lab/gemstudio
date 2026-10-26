@@ -1,4 +1,4 @@
-import {clip,dot} from './geometry.js?v=contact-29';
+import {clip,dot} from './geometry.js';
 // Short lessons group repeated facets, but still remove material with every plane.
 export function learningStages(plan){const cuts=plan.sequence.filter(s=>s.lap==='cut');const groups=[['修外形',cuts.filter(s=>s.part==='腰圍')],['磨底部',cuts.filter(s=>!s.flip&&s.part!=='腰圍')],['磨上部',cuts.filter(s=>s.flip)]];const out=groups.filter(([,x])=>x.length).map(([part,batch])=>({...batch[0],part,batch}));const last=cuts.at(-1);return [...out,{...last,part:'細磨',lap:'fine',batch:[]},{...last,part:'拋光',lap:'polish',batch:[]}];}
 export function cutTowards(faces,step,fraction){const support=Math.max(...faces.flat().map(p=>dot(p,step.normal)));return clip(faces,step.normal,support+(step.d-support)*Math.min(1,fraction));}

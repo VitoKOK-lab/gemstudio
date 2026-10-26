@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import {OrbitControls} from './vendor/OrbitControls.js?v=contact-29';
-import {volume} from './geometry.js?v=contact-29';
+import {OrbitControls} from './vendor/OrbitControls.js';
+import {volume} from './geometry.js';
 // Dedicated local sculpting surface. Unlike convex faceting, every stroke edits only the contacted area.
 export function openCraft(container,kind,{saved,onSave,onContact}={}){
  const N=24,verts=[],pieceId=saved?.id||crypto.randomUUID();let heights=saved?.heights?.slice()||Array.from({length:(N+1)**2},(_,i)=>.85+.035*Math.sin(i*1.71)),finish=saved?.finish?.slice()||heights.map(()=>0);const target=(x,z)=>kind==='cabochon'?.12+.68*Math.sqrt(Math.max(0,1-(x*x+z*z)/2)):.65-.32*Math.exp(-Math.pow(z-Math.sin(x*2.7)*.35,2)*90)*Math.max(0,1-x*x);

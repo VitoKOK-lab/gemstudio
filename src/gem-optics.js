@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import {faceNormal} from './contact.js?v=contact-29';
-import {dot} from './geometry.js?v=contact-29';
+import {faceNormal} from './contact.js';
+import {dot} from './geometry.js';
 // Convex-boundary ray tracing: real facet normals and internal total reflection.
 // The surrounding studio is analytical; scene objects are not traced through the gem.
 // One studio HDRI is shared by every optical material; until it loads they fall back to the analytic studio.

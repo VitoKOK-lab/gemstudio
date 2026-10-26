@@ -1,0 +1,17 @@
+{
+  "name": "gemstudio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/serve.mjs src 8765",
+    "build": "node scripts/build.mjs",
+    "preview": "node scripts/serve.mjs dist 8766",
+    "test": "node --test --import ./test/register-three.mjs \"test/unit/*.test.mjs\"",
+    "test:e2e": "node --test \"test/e2e/*.test.mjs\"",
+    "check": "npm test && npm run build && npm run test:e2e"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2",
+    "playwright": "1.59.0"
+  }
+}

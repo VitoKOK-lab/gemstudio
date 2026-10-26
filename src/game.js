@@ -1,7 +1,7 @@
-import {GEM_SCALE} from './contact.js?v=contact-29';
-import {rough,volume,dot,clip,box} from './geometry.js?v=contact-29';
-import {faceNormal,normalKey} from './contact.js?v=contact-29';
-import {buildPlan} from './plans.js?v=contact-29';
+import {GEM_SCALE} from './contact.js';
+import {rough,volume,dot,clip,box} from './geometry.js';
+import {faceNormal,normalKey} from './contact.js';
+import {buildPlan} from './plans.js';
 export const materials={glass:{name:'練習玻璃',density:2.5,ior:1.52,hardness:1,price:18,color:0xd65a96},quartz:{name:'海綠水晶',density:2.65,ior:1.544,hardness:.75,price:65,color:0x279d91},amethyst:{name:'紫水晶',density:2.65,ior:1.544,hardness:.75,price:120,color:0x9156bd},sapphire:{name:'藍寶石',density:4,ior:1.76,hardness:.35,price:850,color:0x4562b9},diamond:{name:'鑽石',density:3.52,ior:2.417,hardness:.12,price:3000,color:0x76a5cf}};
 export const lessons=[
  {id:'first',name:'磨出三角光',detail:'修形、細磨、拋光。',design:'learn-triangle',material:'glass',kind:'intro',goal:'intro'},
