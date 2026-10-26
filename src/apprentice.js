@@ -24,7 +24,7 @@ export function createApprentice({
   const actions = {};
 
   if (stool)
-    loader.load(BASE + 'stoolBar.glb', (g) => {
+    loader.load(BASE + 'props/stoolBar.glb', (g) => {
       const s = g.scene;
       s.scale.setScalar(1.2);
       s.position.set(home[0] + 0.45, 0, home[1] + 0.2);

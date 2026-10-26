@@ -46,6 +46,7 @@ import { buildRoyalMachine } from "./royal-machine.js";
 import { createApprentice } from "./apprentice.js";
 import { screenConfetti } from "./confetti.js";
 import { createTutorial } from "./tutorial.js";
+import { createScenery } from "./scenery.js";
 import { plans, buildPlan, planSVG, catalogPlanIds, specialistPlans } from "./plans.js";
 import {
   LAP_Y,
@@ -456,7 +457,8 @@ controls.minDistance = 1;
 controls.maxDistance = 14;
 controls.maxPolarAngle = Math.PI * 0.485;
 controls.enablePan = false;
-scene.add(new THREE.HemisphereLight(0xfffbef, 0xd1b88e, 0.85)); // less ambient light, so shadows read clearly
+const hemi = new THREE.HemisphereLight(0xfffbef, 0xd1b88e, 0.85); // less ambient light, so shadows read clearly
+scene.add(hemi);
 const key = new THREE.SpotLight(0xfff2d4, 95, 20, 0.78, 0.65, 1.3);
 key.position.set(-2, 7, 3);
 key.target.position.set(0, 0.7, 0);
@@ -784,10 +786,10 @@ for (let i = 0; i < 5; i++)
     ),
   );
 // Two apprentices do the bench's hand work (see apprentice.js): one turns the dials, the other swaps stone and laps for the operator.
-const apprentice = createApprentice({ THREE, GLTFLoader, scene, name: "apprentice-dial", home: [2.9, 2.1], stool: true, others: () => [[pusher.root.position.x, pusher.root.position.z]] });
+const apprentice = createApprentice({ THREE, GLTFLoader, scene, name: "apprentice-dial", home: [2.9, 2.1], stool: true, others: () => [[pusher.root.position.x, pusher.root.position.z], ...scenery.positions] });
 const pusher = createApprentice({
   THREE, GLTFLoader, scene, name: "apprentice-pusher", model: "character-male-c.glb", home: [-3.3, 2.1],
-  others: () => [[apprentice.root.position.x, apprentice.root.position.z]],
+  others: () => [[apprentice.root.position.x, apprentice.root.position.z], ...scenery.positions],
 });
 const operator = createOperator({
   scene,
@@ -4085,6 +4087,7 @@ function showPracticeResult(ev, course) {
   if (practiceCleared(ev, course)) {
     apprentice.celebrate();
     pusher.celebrate();
+    scenery.celebrate();
     screenConfetti();
     if (!audioMuted && audioContext?.state === "running") treasureChime(audioContext);
     setTimeout(show, 2800);
@@ -5329,6 +5332,13 @@ function tutorialStep() {
 }
 everyFrame(() => tutorial.show(tutorialStep()), 120);
 
+// Every level has its own look: wall and light colours, furniture, food and little animals wandering the bench (scenery.js).
+const scenery = createScenery({
+  THREE, GLTFLoader, scene, lights: { hemi, key, fill },
+  others: () => [[apprentice.root.position.x, apprentice.root.position.z], [pusher.root.position.x, pusher.root.position.z]],
+});
+scenery.setTheme(Math.max(0, courses.findIndex((c) => c.id === state.courseId)));
+
 // Workshop apprentice: walks to the handwheel for any setting change (the player's or auto mode's),
 // does the stone flips and lap changes for the operator, nods at each finished facet (impacts: onImpact).
 const worldPos = (o) => o.getWorldPosition(new THREE.Vector3());
@@ -5346,6 +5356,9 @@ everyFrame((now) => {
   const dt = Math.min(1, (now - apprenticeLast) / 1000); // their motion is time-based, so a slow frame never stalls a job
   apprentice.update(dt);
   pusher.update(dt);
+  const level = courses.findIndex((c) => c.id === state.courseId);
+  if (level >= 0 && scenery.setTheme(level) && openingDone) toast(`第 ${level + 1} 關 · ${scenery.name}`);
+  scenery.update(dt, now);
   apprenticeLast = now;
   const s = apprenticeSeen;
   const turned = Math.abs(state.angle - s.angle) > 0.01 ? "angle" : state.index !== s.index ? "index" : Math.abs(state.height - s.height) > 0.005 ? "height" : null;
@@ -5364,6 +5377,7 @@ if (location.hash === "#debug")
     gem,
     apprentice,
     pusher,
+    scenery,
     celebrate: () => (apprentice.celebrate(), pusher.celebrate(), screenConfetti()),
     courses,
     startCourse,

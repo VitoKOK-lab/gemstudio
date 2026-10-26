@@ -171,3 +171,20 @@ test('the power and pull-down hints still show on a level the player has already
     await close();
   }
 });
+
+test('each level gets its own scene: new colours, furniture and wandering animals', {timeout: 300000}, async () => {
+  const {page, errors, close} = await openGame();
+  try {
+    await startLevel(page, 4);
+    await page.waitForFunction(() => __dbg.scenery.index === 4 && __dbg.scenery.pets >= 2, null, {timeout: 90000});
+    assert.equal(await page.evaluate(() => __dbg.scenery.name), '海岸廚房');
+    const before = await page.evaluate(() => __dbg.scenery.positions);
+    await page.waitForTimeout(12000);
+    const after = await page.evaluate(() => __dbg.scenery.positions);
+    assert.ok(before.some((p, i) => Math.hypot(p[0] - after[i][0], p[1] - after[i][1]) > 0.05), 'the animals walk around');
+    assert.ok(await page.evaluate(() => __dbg.scene.getObjectByName('scenery').children.length >= 6), 'furniture and food are placed');
+    assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
+  } finally {
+    await close();
+  }
+});
