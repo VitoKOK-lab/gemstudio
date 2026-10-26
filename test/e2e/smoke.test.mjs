@@ -33,6 +33,8 @@ test('holding the lever on a compact level grinds facets and an impact shakes th
   const {page, errors, close} = await openGame();
   try {
     await startLevel(page, 3);
+    await page.waitForTimeout(3000);
+    assert.equal(await page.evaluate(() => document.getElementById('tutorial').hidden), true, 'no tutorial after level 2');
     const before = await page.evaluate(() => facetDebug().volume);
     await page.evaluate(async () => {
       const W = ms => new Promise(r => setTimeout(r, ms)), g = document.querySelector('canvas');

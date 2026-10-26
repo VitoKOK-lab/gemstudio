@@ -5272,7 +5272,8 @@ const tutorial = createTutorial();
 let tutorialRun = null,
   tutorialPressed = false;
 function tutorialStep() {
-  if (!easyLesson() || !openingDone || entryAwaiting || targetAcceptedRun !== state.runId || operator.busy || $("#modal").open) return null;
+  // Only levels 1 and 2 teach the basics; from level 3 on the player is on their own.
+  if (!["first", "ring"].includes(state.courseId) || !openingDone || entryAwaiting || targetAcceptedRun !== state.runId || operator.busy || $("#modal").open) return null;
   if (tutorialRun !== state.runId) (tutorialRun = state.runId), (tutorialPressed = false);
   if (hold) tutorialPressed = true;
   if (!state.power) return { id: "power", target: "#mobilePower", title: "第 1 步", text: "點這裡開機", sub: "磨盤要先轉起來" };
