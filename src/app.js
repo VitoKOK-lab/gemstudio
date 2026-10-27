@@ -1553,7 +1553,7 @@ function moveGrinding(e) {
   // Press speed is judged over the last ~0.45 s, not one noisy event: that is what decides a hard landing on the lap.
   pressLog.push({ t: e.timeStamp, travel: leverTravel });
   while (pressLog.length > 2 && e.timeStamp - pressLog[0].t > 450) pressLog.shift();
-  const back = pressLog.find((m) => e.timeStamp - m.t <= 130 && e.timeStamp - m.t >= 16);
+  const back = pressLog.find((m) => e.timeStamp - m.t <= 260 && e.timeStamp - m.t >= 16);
   if (back) speedLog.push({ t: e.timeStamp, v: (leverTravel - back.travel) / ((e.timeStamp - back.t) / 1000) });
   while (speedLog.length && e.timeStamp - speedLog[0].t > 1500) speedLog.shift();
   leverLastY = e.clientY;
