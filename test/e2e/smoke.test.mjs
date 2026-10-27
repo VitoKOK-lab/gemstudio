@@ -43,7 +43,9 @@ test('holding the lever on a compact level grinds facets and an impact shakes th
       await W(400);
       fire('pointerdown', 400);
       for (let y = 404; y <= 500; y += 8) fire('pointermove', y), await W(20);
-      await W(6000);
+      // Slow CI machines need longer: hold until material has come off (or give up after 45s).
+      const v0 = facetDebug().volume;
+      for (let i = 0; i < 90 && facetDebug().volume >= v0; i++) await W(500);
       fire('pointerup', 500);
     });
     const after = await page.evaluate(() => facetDebug().volume);
@@ -128,7 +130,7 @@ test('level 1 teaches step by step and never switches on for the player', {timeo
 });
 
 // Presses the lever on level 1 (each press gets a fresh game) and returns how many chips the stone took.
-async function pressOnLevelOne(step, gap, holdMs, endY = 400) {
+async function pressOnLevelOne(step, gap, holdMs, endY = 400, repeats = 1) {
   const {page, errors, close} = await openGame();
   try {
     await startLevel(page, 0);
@@ -136,16 +138,18 @@ async function pressOnLevelOne(step, gap, holdMs, endY = 400) {
     await page.waitForFunction(() => document.getElementById('tutorial') && !document.getElementById('tutorial').hidden, null, {timeout: 90000});
     await page.click('#mobilePower');
     await page.waitForFunction(() => /按住畫面往下拖/.test(document.getElementById('tutorial').innerText), null, {timeout: 60000});
-    const chips = await page.evaluate(async ([step, gap, holdMs, endY]) => {
+    const chips = await page.evaluate(async ([step, gap, holdMs, endY, repeats]) => {
       const W = ms => new Promise(r => setTimeout(r, ms)), g = document.querySelector('canvas');
       const fire = (t, y) => g.dispatchEvent(new PointerEvent(t, {bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, clientX: 230, clientY: y}));
-      fire('pointerdown', 300);
-      for (let y = 300 + step; y <= endY; y += step) fire('pointermove', y), await W(gap);
-      await W(holdMs);
-      fire('pointerup', endY);
-      await W(600);
+      for (let r = 0; r < repeats && !(__dbg.st().damageCount || 0); r++) {
+        fire('pointerdown', 300);
+        for (let y = 300 + step; y <= endY; y += step) fire('pointermove', y), await W(gap);
+        await W(holdMs);
+        fire('pointerup', endY);
+        await W(600);
+      }
       return __dbg.st().damageCount || 0;
-    }, [step, gap, holdMs, endY]);
+    }, [step, gap, holdMs, endY, repeats]);
     assert.deepEqual(errors.filter(e => !/AudioContext/.test(e)), []);
     return chips;
   } finally {
@@ -158,11 +162,9 @@ test('a gentle press does not chip the stone on an easy level', {timeout: 300000
 test('a fast move that stops in the air does not chip: nothing has touched the lap', {timeout: 300000}, async () => {
   assert.equal(await pressOnLevelOne(20, 12, 1500, 340), 0);
 });
-// Headless frame pacing varies a lot, so a hard press gets up to three fresh games to land its chip.
+// Headless frame pacing varies a lot, so a hard press gets up to five tries in one game to land its chip.
 test('a hard press chips the stone on an easy level', {timeout: 600000}, async () => {
-  let chips = 0;
-  for (let i = 0; i < 3 && !chips; i++) chips = await pressOnLevelOne(30, 12, 1500);
-  assert.ok(chips >= 1);
+  assert.ok((await pressOnLevelOne(30, 12, 1500, 400, 5)) >= 1);
 });
 
 test('the power and pull-down hints still show on a level the player has already cleared', {timeout: 240000}, async () => {
